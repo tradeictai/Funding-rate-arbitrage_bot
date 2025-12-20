@@ -1,6 +1,7 @@
 import deltaAPI from '../services/deltaAPI.js';
 import pi42API from '../services/pi42API.js';
 import config from '../config/config.js';
+import coindcxAPI from '../services/coindcxAPI.js';
 
 /**
  * Order Executor - Phase 3
@@ -64,12 +65,12 @@ class OrderExecutor {
    * @param {number} threshold - Threshold to check against
    * @returns {Object} - { passed: boolean, fundingDiff: number, reason: string }
    */
-  recheckFundingRate(deltaData, pi42Data, threshold) {
+  recheckFundingRate(deltaData, coindcxData, threshold) {
     const FR_delta = deltaData.fundingRate;
-    const FR_pi42 = pi42Data.fundingRate;
+    const FR_coindcx = coindcxData.fundingRate;
 
     // Validate funding rates exist
-    if (FR_delta === null || FR_pi42 === null) {
+    if (FR_delta === null || FR_coindcx === null) {
       return {
         passed: false,
         fundingDiff: 0,
@@ -78,8 +79,8 @@ class OrderExecutor {
     }
 
     // Calculate funding difference using the same logic as Phase 1
-    const FR_first = Math.abs(FR_delta) >= Math.abs(FR_pi42) ? FR_delta : FR_pi42;
-    const FR_second = Math.abs(FR_delta) >= Math.abs(FR_pi42) ? FR_pi42 : FR_delta;
+    const FR_first = Math.abs(FR_delta) >= Math.abs(FR_coindcx) ? FR_delta : FR_coindcx;
+    const FR_second = Math.abs(FR_delta) >= Math.abs(FR_coindcx) ? FR_coindcx : FR_delta;
 
     const fundingDiff = this.calculateFundingDifference(FR_first, FR_second);
 
@@ -98,7 +99,7 @@ class OrderExecutor {
       passed: true,
       fundingDiff,
       FR_delta,
-      FR_pi42,
+      FR_coindcx,
       FR_first,
       FR_second
     };
@@ -135,34 +136,34 @@ class OrderExecutor {
    * @returns {Object} - { deltaSide, pi42Side, explanation }
    */
   determinePositionSides(FR_first, exchange_first, exchange_second) {
-    let deltaSide, pi42Side;
+    let deltaSide, coindcxSide;
     let explanation;
 
     if (FR_first > 0) {
       // FR_first is positive → SHORT on exchange_first, LONG on exchange_second
       if (exchange_first === 'delta') {
         deltaSide = 'SHORT'; // sell on Delta
-        pi42Side = 'LONG';   // buy on Pi42
+        coindcxSide = 'LONG';   // buy on Pi42
         explanation = `FR_first (${FR_first.toFixed(4)}%) is positive → SHORT on Delta, LONG on Pi42`;
       } else {
         deltaSide = 'LONG';  // buy on Delta
-        pi42Side = 'SHORT';  // sell on Pi42
+        coindcxSide = 'SHORT';  // sell on Pi42
         explanation = `FR_first (${FR_first.toFixed(4)}%) is positive → LONG on Delta, SHORT on Pi42`;
       }
     } else {
       // FR_first is negative → LONG on exchange_first, SHORT on exchange_second
       if (exchange_first === 'delta') {
         deltaSide = 'LONG';  // buy on Delta
-        pi42Side = 'SHORT';  // sell on Pi42
+        coindcxSide = 'SHORT';  // sell on Pi42
         explanation = `FR_first (${FR_first.toFixed(4)}%) is negative → LONG on Delta, SHORT on Pi42`;
       } else {
         deltaSide = 'SHORT'; // sell on Delta
-        pi42Side = 'LONG';   // buy on Pi42
+        coindcxSide = 'LONG';   // buy on Pi42
         explanation = `FR_first (${FR_first.toFixed(4)}%) is negative → SHORT on Delta, LONG on Pi42`;
       }
     }
 
-    return { deltaSide, pi42Side, explanation };
+    return { deltaSide, coindcxSide, explanation };
   }
 
   /**
@@ -230,52 +231,64 @@ class OrderExecutor {
    * @param {string} orderType - 'MARKET' or 'LIMIT'
    * @returns {Promise<Object>} - Order result
    */
-  async placeOrderOnPi42(symbol, side, quantity, price = null, orderType = 'MARKET') {
-    try {
-      console.log(`\n📤 Placing order on Pi42 Exchange:`);
-      console.log(`   Symbol: ${symbol}`);
-      console.log(`   Side: ${side}`);
-      console.log(`   Quantity: ${quantity}`);
-      console.log(`   Type: ${orderType}`);
-      if (price) console.log(`   Price: ${price}`);
+ async placeOrderOnCoinDCX(symbol, side, quantity, price = null, orderType = 'MARKET') {
+  try {
+    console.log(`\n📤 Placing order on CoinDCX Futures:`);
+    console.log(`   Symbol: ${symbol}`);
+    console.log(`   Side: ${side}`);
+    console.log(`   Quantity: ${quantity}`);
+    console.log(`   Type: ${orderType}`);
+    if (price) console.log(`   Price: ${price}`);
+    const apiSide = side.toUpperCase() === 'LONG' ? 'buy' : 'sell';
+    const orderObj = {
+      pair: symbol, // e.g., "B-BTC_USDT"
+      side: apiSide, // "buy" or "sell"
+      order_type: orderType.toLowerCase() === 'limit' ? 'limit_order' : 'market_order',
+      total_quantity: Number(quantity)
+    };
 
-      // Convert LONG/SHORT to BUY/SELL
-      const pi42Side = side === 'LONG' ? 'BUY' : 'SELL';
-
-      const orderParams = {
-        symbol: symbol,
-        side: pi42Side,
-        orderType: orderType,
-        quantity: quantity,
-        price: price,
-        timeInForce: 'GTC',
-        postOnly: false,
-        reduceOnly: false
-      };
-
-      const result = await pi42API.placeOrder(orderParams);
-
-      console.log(`✅ Pi42 order placed successfully:`, result);
-
-      return {
-        success: true,
-        exchange: 'pi42',
-        orderId: result.orderId,
-        symbol: symbol,
-        side: side,
-        quantity: quantity,
-        result: result
-      };
-
-    } catch (error) {
-      console.error(`❌ Failed to place order on Pi42:`, error.message);
-      return {
-        success: false,
-        exchange: 'pi42',
-        error: error.message
-      };
+    if (orderType.toLowerCase() === 'limit') {
+      const roundedPrice = Math.round(Number(price) * 1000000) / 1000000;
+      orderObj.price = roundedPrice;
+      orderObj.time_in_force = 'good_till_cancel'; // Optional but safe
     }
+
+    // Optional: leverage (recommended to match position)
+    if (this.leverage) {
+      orderObj.leverage = Number(this.leverage);
+    }
+
+    // Default safe values
+    orderObj.notification = 'no_notification';
+    orderObj.position_margin_type = 'crossed'; // or 'isolated'
+    orderObj.margin_currency_short_name = 'USDT'; // or 'INR'
+
+    const body = { order: orderObj };
+
+    console.log('CoinDCX Order Payload:', body);
+
+    const result = await coindcxAPI.placeOrder(body);
+
+    console.log(`✅ CoinDCX order placed successfully:`, result);
+
+    return {
+      success: true,
+      exchange: 'coindcx',
+      orderId: result[0]?.id || result.id,
+      symbol: symbol,
+      side: side,
+      quantity: quantity,
+      result: result
+    };
+  } catch (error) {
+    console.error(`❌ Failed to place order on CoinDCX:`, error.message);
+    return {
+      success: false,
+      exchange: 'coindcx',
+      error: error.message
+    };
   }
+}
 
 
 
@@ -461,247 +474,152 @@ class OrderExecutor {
   // }
 
 
-  async executeArbitrageTrade(opportunity, deltaFundingData, pi42FundingData) {
-    console.log("opportunity============", opportunity);
-    console.log("opportunity.phase2.positionSize============", opportunity.phase2.positionSize.breakdown);
-    console.log("deltaFundingData============", deltaFundingData);
-    console.log("pi42FundingData============", pi42FundingData);
-    console.log('\n' + '='.repeat(60));
-    console.log('🎯 PHASE 3: ORDER EXECUTION');
-    console.log('='.repeat(60));
+  async executeArbitrageTrade(opportunity, deltaFundingData, coindcxFundingData) {
+  console.log("opportunity============", opportunity);
+  console.log("deltaFundingData============", deltaFundingData);
+  console.log("coindcxFundingData============", coindcxFundingData);
+  console.log('\n' + '='.repeat(60));
+  console.log('🎯 PHASE 3: ORDER EXECUTION (Delta + CoinDCX)');
+  console.log('='.repeat(60));
 
-    let size;
-    let pi42RealQuantity;
+  let size;
+  let coindcxRealQuantity;
 
+  try {
+    // Step 0: Set Leverage on Both Exchanges
+    console.log('\n⚙️ Step 0: Setting leverage on both exchanges...');
+
+    const deltaProductId = await deltaAPI.getProductId(opportunity.token);
+    if (!deltaProductId) throw new Error(`Failed to get Delta product ID for ${opportunity.token}`);
+
+    const coindcxSymbol = opportunity.phase2.positionSize.coindcxSymbol || `B-${opportunity.token}_USDT`; // e.g., B-BTC_USDT
+    console.log('CoinDCX Symbol:', coindcxSymbol);
+
+    // Set leverage
     try {
-      // Step 0: Set Leverage on Both Exchanges (Critical Prerequisite)
-      console.log('\n⚙️ Step 0: Setting leverage on both exchanges...');
+      await deltaAPI.setLeverage(deltaProductId, this.leverage);
+      console.log(`   ✅ Delta leverage set to ${this.leverage}x`);
+    } catch (e) {
+      console.warn(`   ⚠️ Delta leverage failed (continuing): ${e.message}`);
+    }
 
-      // Get Delta Product ID
-      const deltaProductId = await deltaAPI.getProductId(opportunity.token);
+    // CoinDCX doesn't have REST setLeverage — it uses order.leverage field
+    console.log(`   ℹ️ CoinDCX leverage will be set via order parameter (${this.leverage}x)`);
 
-      console.log('Delta Product ID:', deltaProductId);
-      if (!deltaProductId) {
-        throw new Error(`Failed to retrieve product ID for Delta symbol: ${opportunity.token}`);
-      }
-      console.log('Delta Product ID:', deltaProductId);
+    // Step 1: Calculate Order Sizes
+    console.log('\n📏 Step 1: Calculating position sizes...');
 
-      // Determine correct Pi42 symbol - use the one from the opportunity
-      const pi42Symbol = opportunity.pi42Symbol; // Use original MOVEUSDT, not MOVEINR
-      console.log('Pi42 Symbol for Leverage Setting:', pi42Symbol);
+    const lotInfo = await deltaAPI.getLotSize(opportunity.token);
+    const contractValue = Number(lotInfo.contractValue);
+    if (!contractValue || contractValue <= 0) throw new Error('Invalid contract value');
 
-      // Set leverage on BOTH exchanges and WAIT for completion
-      try {
-        await deltaAPI.setLeverage(deltaProductId, this.leverage);
-        console.log(`   ✅ Delta leverage set to ${this.leverage}x`);
-      } catch (error) {
-        console.error(`   ⚠️ Delta leverage setting failed: ${error.message}`);
-        // Continue anyway - leverage might already be set
-      }
+    const actualQuantity = Number(opportunity.phase2.positionSize.actualQuantity);
+    let deltaContracts = Math.floor(actualQuantity / contractValue);
 
-      try {
-        await pi42API.setLeverage(pi42Symbol, this.leverage);
-        console.log(`   ✅ Pi42 leverage set to ${this.leverage}x (CROSS mode)`);
-      } catch (error) {
-        console.error(`   ⚠️ Pi42 leverage setting failed: ${error.message}`);
-        // Continue anyway - leverage might already be set
-      }
-      try {
-        console.log('🔍 Fetching Delta lot size for token:', opportunity.token);
+    if (deltaContracts <= 0) {
+      throw new Error(`Delta order size too small: ${actualQuantity} / ${contractValue}`);
+    }
 
-        const lotInfo = await deltaAPI.getLotSize(opportunity.token);
-        const contractValue = Number(lotInfo.contractValue);
+    size = deltaContracts;
+    coindcxRealQuantity = deltaContracts * contractValue; // Same notional on CoinDCX
 
-        if (!contractValue || contractValue <= 0) {
-          throw new Error(`Invalid contract value received: ${contractValue}`);
-        }
+    console.log(`✅ Delta: ${deltaContracts} contracts`);
+    console.log(`✅ CoinDCX: ${coindcxRealQuantity} units`);
 
-        console.log('✅ Lot size found:', lotInfo);
+    // Step 2: Cooldown Check
+    console.log('\n⏱️ Step 2: Checking cooldown...');
+    const cooldownCheck = this.checkCooldown();
+    if (cooldownCheck.inCooldown) {
+      return { success: false, stage: 'cooldown', cooldownInfo: cooldownCheck };
+    }
 
-        // 1️⃣ Convert real quantity → Delta contracts
-        const actualQuantity = Number(opportunity.phase2.positionSize.actualQuantity);
+    // Step 3: Re-check Funding Rate
+    console.log('\n📊 Step 3: Re-checking funding rate...');
+    const fundingCheck = this.recheckFundingRate(
+      deltaFundingData,
+      coindcxFundingData,
+      opportunity.threshold
+    );
+    
+    console.log("fndfasfdsa", fundingCheck)
+    if (!fundingCheck.passed) {
+      return { success: false, stage: 'funding_recheck', reason: fundingCheck.reason };
+    }
 
-        let deltaContracts = Math.floor(actualQuantity / contractValue);
+    // Step 4: Determine Sides
+    console.log('\n📊 Step 4: Determining position sides...');
+    const exchange_first = Math.abs(fundingCheck.FR_delta) >= Math.abs(fundingCheck.FR_coindcx) ? 'delta' : 'coindcx';
+    const FR_first = exchange_first === 'delta' ? fundingCheck.FR_delta : fundingCheck.FR_coindcx;
 
+    const positions = this.determinePositionSides(FR_first, exchange_first, exchange_first === 'delta' ? 'coindcx' : 'delta');
 
-        if (deltaContracts <= 0) {
-          throw new Error(
-            `Delta order size is zero. actualQuantity=${actualQuantity}, contractValue=${contractValue}`
-          );
-        }
-        size = deltaContracts;
-        console.log(`✅ Calculated Delta order size: ${deltaContracts} contracts`);
+    console.log(`   ${positions.explanation}`);
+    console.log(`   Delta: ${positions.deltaSide}`);
+    console.log(`   CoinDCX: ${positions.coindcxSide}`);
 
-        // 2️⃣ Convert Delta contracts → Pi42 quantity
-        const pi42Quantity = deltaContracts * contractValue;
+    // Step 5: Get Prices
+    const deltaPrice = opportunity.phase2.positionSize.breakdown.delta.tradingPrice;
+    const coindcxPrice = opportunity.phase2.positionSize.breakdown.coindcx?.tradingPrice || deltaPrice;
 
-        console.log(`✅ Calculated Pi42 order quantity: ${pi42Quantity} units`);
+    console.log(`\n🚀 Step 5: Placing orders...`);
+    console.log(`   Delta: ${positions.deltaSide} ${size} @ ${deltaPrice}`);
+    console.log(`   CoinDCX: ${positions.coindcxSide} ${coindcxRealQuantity} @ ${coindcxPrice}`);
 
-        // 3️⃣ Sanity check (Delta ↔ Pi42 consistency)
-        if (pi42Quantity / contractValue !== deltaContracts) {
-          throw new Error(
-            `Quantity mismatch detected. Delta=${deltaContracts}, Pi42=${pi42Quantity}`
-          );
+    // Step 6: Execute Orders Simultaneously
+    const [deltaOrder, coindcxOrder] = await Promise.all([
+      this.placeOrderOnDelta(
+        deltaProductId,
+        opportunity.token,
+        positions.deltaSide,
+        size,
+        deltaPrice,
+        'limit_order'
+      ),
+      this.placeOrderOnCoinDCX(
+        coindcxSymbol,
+        positions.coindcxSide,
+        coindcxRealQuantity,
+        coindcxPrice,
+        'LIMIT'
+      )
+    ]);
 
-        }
-
-        pi42RealQuantity = pi42Quantity;
-
-      } catch (error) {
-        console.error(`   ⚠️ Pi42 leverage setting failed: ${error.message}`);
-        // Continue anyway - leverage might already be set
-      }
-      // CRITICAL: Wait for leverage to propagate
-      console.log('⏳ Waiting 2 seconds for leverage updates to propagate...');
-      // await new Promise(resolve => setTimeout(resolve, 5000));
-
-      // Step 1: Check Cooldown Period
-      console.log('\n⏱️ Step 1: Checking cooldown period...');
-      const cooldownCheck = this.checkCooldown();
-
-      if (cooldownCheck.inCooldown) {
-        console.log(`   ❌ ${cooldownCheck.message}`);
-        console.log(`   Last execution: ${cooldownCheck.lastExecutionTime}`);
-        console.log(`   Time remaining: ${cooldownCheck.remainingMinutes} minute(s) (${cooldownCheck.remainingSeconds} seconds)`);
-
-        return {
-          success: false,
-          stage: 'cooldown_check',
-          reason: cooldownCheck.message,
-          cooldownInfo: cooldownCheck
-        };
-      }
-
-      console.log(`   ✅ ${cooldownCheck.message} - Ready to execute`);
-
-      // Step 2: Re-check Funding Rate
-      console.log('\n📊 Step 2: Re-checking funding rate...');
-      const fundingCheck = this.recheckFundingRate(
-        deltaFundingData,
-        pi42FundingData,
-        opportunity.threshold
-      );
-
-      if (!fundingCheck.passed) {
-        return {
-          success: false,
-          stage: 'funding_recheck',
-          reason: fundingCheck.reason,
-          fundingDiff: fundingCheck.fundingDiff
-        };
-      }
-
-      console.log(`   ✅ Funding rate still valid: ${fundingCheck.fundingDiff.toFixed(4)}%`);
-      console.log(`   Delta FR: ${fundingCheck.FR_delta.toFixed(4)}%`);
-      console.log(`   Pi42 FR: ${fundingCheck.FR_pi42.toFixed(4)}%`);
-
-      // Step 3: Determine Position Sides
-      console.log('\n📊 Step 3: Determining position sides...');
-      const exchange_first = Math.abs(fundingCheck.FR_delta) >= Math.abs(fundingCheck.FR_pi42) ? 'delta' : 'pi42';
-      const exchange_second = exchange_first === 'delta' ? 'pi42' : 'delta';
-      const FR_first = exchange_first === 'delta' ? fundingCheck.FR_delta : fundingCheck.FR_pi42;
-
-      const positions = this.determinePositionSides(FR_first, exchange_first, exchange_second);
-
-      console.log(`   ${positions.explanation}`);
-      console.log(`   Delta Position: ${positions.deltaSide}`);
-      console.log(`   Pi42 Position: ${positions.pi42Side}`);
-
-      // Step 4: Extract Quantities and Prices from Phase 2
-      const deltaQuantity = opportunity.phase2.positionSize.actualQuantity;
-      const pi42Quantity = opportunity.phase2.positionSize.actualQuantity;
-
-      const deltaPrice = opportunity.phase2.positionSize.breakdown.delta.tradingPrice;
-      const pi42Price = opportunity.phase2.positionSize.breakdown.pi42.tradingPrice;
-
-      console.log(`\n📊 Step 4: Preparing orders...`);
-      console.log(`   Delta: ${positions.deltaSide} ${deltaQuantity} contracts @ ${deltaPrice}`);
-      console.log(`   Pi42: ${positions.pi42Side} ${pi42Quantity} @ ${pi42Price}`);
-
-      try {
-        console.log('  Setting to find the lotsize.......', opportunity.deltaSymbol);
-        await deltaAPI.getLotSize(opportunity.deltaSymbol);
-        console.log(`   ✅ Delta leverage set to ${this.leverage}x before order placement`);
-      } catch (error) {
-        console.error(`   ⚠️ Pi42 leverage setting failed: ${error.message}`);
-        // Continue anyway - leverage might already be set
-      }
-
-      // Step 5: Place Orders Simultaneously
-      console.log('\n🚀 Step 5: Executing orders on both exchanges...');
-
-      const [deltaOrder, pi42Order] = await Promise.all([
-        this.placeOrderOnDelta(
-          deltaProductId,
-          opportunity.token,
-          positions.deltaSide,
-          size,
-          deltaPrice,
-          'limit_order'
-        ),
-        this.placeOrderOnPi42(
-          pi42Symbol, // Use original symbol, not converted
-          positions.pi42Side,
-          pi42RealQuantity,
-          pi42Price,
-          'LIMIT'
-        )
-      ]);
-
-      // Final Check: Both Orders Successful?
-      if (!deltaOrder.success || !pi42Order.success) {
-        console.error('\n❌ One or more orders failed:');
-        if (!deltaOrder.success) console.error(`   Delta Error: ${deltaOrder.error}`);
-        if (!pi42Order.success) console.error(`   Pi42 Error: ${pi42Order.error}`);
-
-        console.log(`\n❌ PHASE 3: Execution failed at order_placement`);
-        console.log(`   Reason: One or more orders failed to execute`);
-
-        return {
-          success: false,
-          stage: 'order_placement',
-          deltaOrder,
-          pi42Order,
-          reason: 'One or more orders failed to execute'
-        };
-      }
-
-      // Success!
-      console.log('\n✅ Arbitrage trade executed successfully on both exchanges!');
-
-      // Activate Cooldown
-      this.lastExecutionTime = Date.now();
-      const nextAvailableTime = new Date(this.lastExecutionTime + (this.orderCooldownMinutes * 60 * 1000));
-
-      console.log(`⏱️  Cooldown activated: ${this.orderCooldownMinutes} minutes`);
-      console.log(`   Next execution available at: ${nextAvailableTime.toLocaleString()}`);
-      console.log('='.repeat(60));
-
-      return {
-        success: true,
-        deltaOrder,
-        pi42Order,
-        positions,
-        fundingCheck,
-        executionTime: new Date().toISOString(),
-        cooldownInfo: {
-          cooldownMinutes: this.orderCooldownMinutes,
-          nextAvailableTime: nextAvailableTime.toISOString()
-        }
-      };
-
-    } catch (error) {
-      console.error('\n❌ Phase 3 execution failed:', error.message);
-      console.error(error.stack);
-
+    if (!deltaOrder.success || !coindcxOrder.success) {
+      console.error('❌ One or both orders failed');
       return {
         success: false,
-        stage: 'execution_error',
-        error: error.message,
-        stack: error.stack
+        stage: 'order_placement',
+        deltaOrder,
+        coindcxOrder
       };
     }
+
+    // Success!
+    this.lastExecutionTime = Date.now();
+    const nextTime = new Date(this.lastExecutionTime + this.orderCooldownMinutes * 60 * 1000);
+
+    console.log('\n✅ Arbitrage executed successfully on Delta + CoinDCX!');
+    console.log(`⏱️ Cooldown: ${this.orderCooldownMinutes} minutes`);
+    console.log(`   Next trade: ${nextTime.toLocaleString()}`);
+
+    return {
+      success: true,
+      deltaOrder,
+      coindcxOrder,
+      positions,
+      fundingCheck,
+      executionTime: new Date().toISOString()
+    };
+
+  } catch (error) {
+    console.error('❌ Execution failed:', error.message);
+    return {
+      success: false,
+      stage: 'execution_error',
+      error: error.message
+    };
   }
+}
 }
 
 export default new OrderExecutor();

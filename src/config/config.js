@@ -14,6 +14,7 @@ const config = {
       apiKey: process.env.PI42_API_KEY || '',
       apiSecret: process.env.PI42_API_SECRET || ''
     }
+
   },
 
 
@@ -25,6 +26,10 @@ const config = {
     pi42: {
       apiKey: process.env.PI42_API_KEY_trade || '',
       apiSecret: process.env.PI42_API_SECRET_trade || ''
+    },
+    coindcx: {
+     apiKey: process.env.COINDCX_API_KEY || '',
+      apiSecret: process.env.COINDCX_API_SECRET || ''
     }
   },
 

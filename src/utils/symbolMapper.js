@@ -226,7 +226,7 @@ this.deltaToPi42Map = new Map([
   ['IOTAUSD', 'IOTAUSDT'],
   ['ETHFIUSD', 'ETHFIUSDT'],
   ['BERAUSD', 'BERAUSDT'],
-  ['AIOUSD', 'AIOUSDT'],
+  // ['AIOUSD', 'AIOUSDT'],
   ['JUPUSD', 'JUPUSDT'],
   ['HBARUSD', 'HBARUSDT'],
   ['GRIFFAINUSD', 'GRIFFAINUSDT'],

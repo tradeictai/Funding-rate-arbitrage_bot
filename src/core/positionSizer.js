@@ -1,5 +1,5 @@
 import deltaAPI from '../services/deltaAPI.js';
-import pi42API from '../services/pi42API.js';
+import coindcxAPI from '../services/coindcxAPI.js';
 import config from '../config/config.js';
 
 /**
@@ -139,16 +139,16 @@ class PositionSizer {
    */
   async getBalances() {
     try {
-      const [deltaBalance, pi42Balance] = await Promise.all([
+      const [deltaBalance, coindcxBalance] = await Promise.all([
         deltaAPI.getAssetBalance('USD'),
-        pi42API.getAssetBalance('USDT')
+        coindcxAPI.getAssetBalance('USDT')
       ]);
 
 
-      console.log(`Fetched Balances -> Delta: $${deltaBalance.toFixed(2)}, Pi42: $${pi42Balance.toFixed(2)}`);
+      console.log(`Fetched Balances -> Delta: $${deltaBalance.toFixed(2)}, Coindcx: $${coindcxBalance.toFixed(2)}`);
       return {
         delta: deltaBalance,
-        pi42: pi42Balance,
+        coindcx: coindcxBalance,
         timestamp: Date.now()
       };
     } catch (error) {
@@ -178,10 +178,10 @@ class PositionSizer {
     const balances = await this.getBalances();
 
     console.log(`Delta Balance:   $${balances.delta.toFixed(2)} USDT`);
-    console.log(`Pi42 Balance:    $${balances.pi42.toFixed(2)} USDT`);
+    console.log(`Pi42 Balance:    $${balances.coindcx.toFixed(2)} USDT`);
 
     // Find the minimum balance (limiting factor)
-    const minBalance = Math.min(balances.delta, balances.pi42);
+    const minBalance = Math.min(balances.delta, balances.coindcx);
     console.log(`Min Balance:     $${minBalance.toFixed(2)} USDT`);
 
     // Check if we have sufficient balance
@@ -205,24 +205,24 @@ class PositionSizer {
 
     // Get mark prices (LTP)
     const LTP_delta = parseFloat(opportunity.price_delta);
-    const LTP_pi42 = parseFloat(opportunity.price_pi42);
+    const LTP_coindcx = parseFloat(opportunity.price_binance);
 
-    if (!LTP_delta || !LTP_pi42) {
-      throw new Error(`Invalid mark prices: Delta=${opportunity.price_delta}, Pi42=${opportunity.price_pi42}`);
+    if (!LTP_delta || !LTP_coindcx) {
+      throw new Error(`Invalid mark prices: Delta=${opportunity.price_delta}, Coindcx=${opportunity.price_binance}`);
     }
 
     console.log(`LTP Delta:        $${LTP_delta.toFixed(8)}`);
-    console.log(`LTP Pi42:         $${LTP_pi42.toFixed(8)}`);
+    console.log(`LTP Coindcx:         $${LTP_coindcx.toFixed(8)}`);
 
     // Determine trading sides based on funding rate difference
     // If Delta FR > Pi42 FR: Short Delta (sell), Long Pi42 (buy)
     // If Pi42 FR > Delta FR: Long Delta (buy), Short Pi42 (sell)
-    const deltaSide = opportunity.FR_delta > opportunity.FR_pi42 ? 'sell' : 'buy';
-    const pi42Side = opportunity.FR_delta > opportunity.FR_pi42 ? 'buy' : 'sell';
+    const deltaSide = opportunity.FR_delta > opportunity.FR_binance ? 'sell' : 'buy';
+    const coindcxSide = opportunity.FR_delta > opportunity.FR_binance ? 'buy' : 'sell';
 
     console.log(`\nTrading Direction:`);
     console.log(`Delta Side:       ${deltaSide.toUpperCase()}`);
-    console.log(`Pi42 Side:        ${pi42Side.toUpperCase()}`);
+    console.log(`Coindcx Side:        ${coindcxSide.toUpperCase()}`);
 
     // Step 1: Calculate Temp_Q_ex1 (temporary quantity for exchange 1 - Delta)
     const Temp_Q_ex1 = effectiveCapital / LTP_delta;
@@ -252,30 +252,35 @@ class PositionSizer {
     console.log(`\nStep 3: A_Q_ex1 = ${A_Q_ex1.toFixed(8)} (${effectiveCapital.toFixed(2)} / ${TP_EX1.toFixed(8)})`);
 
     // Step 4: Fetch orderbook for Pi42 and calculate TP_EX2
-    console.log(`\nStep 4: Fetching Pi42 orderbook...`);
-    const pi42OrderbookRaw = await pi42API.getOrderbook(opportunity.pi42Symbol, this.orderbookDepth);
-    const pi42Orderbook = this.normalizeOrderbook(pi42OrderbookRaw, 'pi42');
+    console.log(`\nStep 4: Fetching Coindcx orderbook...`);
+    const convertedSymbol = `B-${opportunity.binanceSymbol.replace(/(USDT)$/, "_$1")}`;
+    console.log("converted symbol", convertedSymbol)
+    const coindcxOrderbookRaw = await coindcxAPI.getOrderbook(convertedSymbol, this.orderbookDepth);
 
-    const pi42TPResult = this.calculateTradingPriceFromOrderbook(pi42Orderbook, pi42Side, A_Q_ex1);
+    console.log("refwewefwef", coindcxOrderbookRaw)
+    const coindcxOrderbook = this.normalizeOrderbook(coindcxOrderbookRaw, 'coindcx');
 
-    if (!pi42TPResult.feasible) {
-      console.log(`❌ Cannot execute on Pi42: ${pi42TPResult.reason}`);
+ console.log("erfewrwefwe",  coindcxOrderbook)
+    const coindcxTPResult = this.calculateTradingPriceFromOrderbook(coindcxOrderbook, coindcxSide, A_Q_ex1);
+     console.log("coinDedrfwae", coindcxTPResult)
+    if (!coindcxTPResult.feasible) {
+      console.log(`❌ Cannot execute on Coindcx: ${coindcxTPResult.reason}`);
       return {
         canTrade: false,
-        reason: `Pi42 orderbook insufficient: ${pi42TPResult.reason}`,
+        reason: `Coindcx orderbook insufficient: ${coindcxTPResult.reason}`,
         balances
       };
     }
 
-    const TP_EX2 = pi42TPResult.tradingPrice;
-    console.log(`TP_EX2 (Pi42):    $${TP_EX2.toFixed(8)}`);
+    const TP_EX2 = coindcxTPResult.tradingPrice;
+    console.log(`TP_EX2 (Coindcx):    $${TP_EX2.toFixed(8)}`);
 
     // Calculate margin required (without leverage)
     const marginRequired = effectiveCapital / this.leverage;
     console.log(`\nMargin Required:  $${marginRequired.toFixed(2)} USDT`);
 
     // Verify we have enough margin on both exchanges
-    if (balances.delta < marginRequired || balances.pi42 < marginRequired) {
+    if (balances.delta < marginRequired || balances.coindcx < marginRequired) {
       console.log(`❌ Insufficient margin for position`);
       return {
         canTrade: false,
@@ -290,7 +295,7 @@ class PositionSizer {
 
     return {
       canTrade: true,
-
+      coindcxSymbol: convertedSymbol,
       // Actual quantity to trade (same on both exchanges)
       actualQuantity: A_Q_ex1,
 
@@ -320,14 +325,14 @@ class PositionSizer {
           availableBalance: balances.delta,
           orderbook: deltaOrderbook
         },
-        pi42: {
-          side: pi42Side,
+        coindcx: {
+          side: coindcxSide,
           quantity: A_Q_ex1,
           tradingPrice: TP_EX2,
           sizeUSD: A_Q_ex1 * TP_EX2,
           marginRequired,
-          availableBalance: balances.pi42,
-          orderbook: pi42Orderbook
+          availableBalance: balances.coindcx,
+          orderbook: coindcxOrderbook
         }
       }
     };
@@ -360,7 +365,7 @@ class PositionSizer {
       return false;
     }
 
-    if (positionSize.marginRequired > positionSize.breakdown.pi42.availableBalance) {
+    if (positionSize.marginRequired > positionSize.breakdown.coindcx.availableBalance) {
       console.log(`⚠️  Insufficient margin on Pi42`);
       return false;
     }
