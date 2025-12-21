@@ -2,6 +2,7 @@ import EventEmitter from 'events';
 import DeltaPositionMonitor from './deltaPositionMonitor.js';
 import Pi42PositionMonitor from './pi42PositionMonitor.js';
 import config from '../config/config.js';
+import CoinDCXPositionMonitor from './coindcxPositionMonitor.js';
 
 /**
  * Trade Monitor - Enhanced Phase 4+
@@ -10,19 +11,21 @@ import config from '../config/config.js';
  * - Auto Normal Exit at funding time completion
  */
 class TradeMonitor extends EventEmitter {
-  constructor(deltaExchange, pi42Exchange) {
+  constructor(deltaExchange, coindcxExchange) {
     super();
 
     this.deltaMonitor = new DeltaPositionMonitor();
-    this.pi42Monitor = new Pi42PositionMonitor();
+    this.coindcxMonitor = new CoinDCXPositionMonitor();
+    // this.conindcxMonitor = new CoinDCXPositionMonitor();
 
     // Remove dependency on external exchange funding fetchers
     this.deltaExchange = deltaExchange;
-    this.pi42Exchange = pi42Exchange;
+    this.coindcxExchange = coindcxExchange;
+    // this.coindcxExchange = coindcxExchange;
 
     this.activeTrade = null;
     this.latestDeltaPosition = null;
-    this.latestPi42Position = null;
+    this.latestCoindcxPosition = null;
 
     this.quantityTolerance = config.trading.quantityTolerance || 0.05; // 5%
     this.minProfitThreshold = config.trading.minProfitThreshold || 0.01; // e.g. 0.01%
@@ -44,22 +47,26 @@ class TradeMonitor extends EventEmitter {
     });
 
     // Pi42 Events
-    this.pi42Monitor.on('position', (data) => {
+    this.coindcxMonitor.on('position', (data) => {
 
-      console.log('Pi42 position event received:', data);
-      this.handlePi42Position(data);
+      console.log('Coindcx position event received:', data);
+      this.handleCoindcxPosition(data);
     });
 
     // Listen to funding rate updates for real-time flip detection
     this.deltaMonitor.on('funding_rate', () => {
-      if ( this.latestDeltaPosition && this.latestPi42Position) {
+      if (this.latestDeltaPosition && this.latestCoindcxPosition) {
+        this.checkForNormalExit();
         this.performFlipCheck();
+        
       }
     });
 
-    this.pi42Monitor.on('funding_rate', () => {
-      if (this.latestDeltaPosition && this.latestPi42Position) {
+    this.coindcxMonitor.on('funding_rate', () => {
+      if (this.latestDeltaPosition && this.latestCoindcxPosition) {
+        this.checkForNormalExit();
         this.performFlipCheck();
+        
       }
     });
   }
@@ -72,44 +79,45 @@ class TradeMonitor extends EventEmitter {
 
     this.latestDeltaPosition = position;
 
-    if (this.latestPi42Position && this.activeTrade) {
-      this.checkForNormalExit();
-      await this.performQuantityCheck(this.latestDeltaPosition, this.latestPi42Position);
-      this.performFlipCheck();           // Check flip on every Delta update
-               // Check if funding time completed
+    if (this.latestCoindcxPosition ) {
+      
+      await this.performQuantityCheck(this.latestDeltaPosition, this.latestCoindcxPosition);
+      this.performFlipCheck();
+       this.checkForNormalExit();          // Check flip on every Delta update
+      // Check if funding time completed
     }
   }
 
-  async handlePi42Position(data) {
+  async handleCoindcxPosition(data) {
     const { type, position } = data;
 
-    console.log(`\n🔔 Pi42 Position Event: ${type.toUpperCase()}`);
+    console.log(`\n🔔 Coindcx Position Event: ${type.toUpperCase()}`);
     console.log(`   Symbol: ${position.symbol || position.contractPair} | Amount: ${Math.abs(position.positionAmount || 0)}`);
 
-    this.latestPi42Position = position;
+    this.latestCoindcxPosition = position;
 
-    if (this.latestDeltaPosition && this.activeTrade) {
-      await this.performQuantityCheck(this.latestDeltaPosition, this.latestPi42Position);
+    if (this.latestDeltaPosition) {
+      await this.performQuantityCheck(this.latestDeltaPosition, this.latestCoindcxPosition);
       this.performFlipCheck();           // Check flip on every Pi42 update
       this.checkForNormalExit();         // Check if funding time completed
     }
   }
 
-  async performQuantityCheck(deltaPosition, pi42Position) {
-    if (!deltaPosition || !pi42Position) return;
+  async performQuantityCheck(deltaPosition, coindcxPosition) {
+    if (!deltaPosition || !coindcxPosition) return;
 
     const deltaSize = Math.abs(deltaPosition.size || 0);
     const deltaContractValue = parseFloat(deltaPosition.product?.contract_value || 1);
     const deltaQuantity = deltaSize * deltaContractValue;
-    const pi42Quantity = Math.abs(pi42Position.positionAmount || 0);
+    const coindcxQuantity = Math.abs(coindcxPosition.positionAmount || 0);
 
     console.log('\n🔍 QUANTITY CHECK');
     console.log('='.repeat(60));
     console.log(`Delta: ${deltaQuantity.toFixed(4)} (${deltaSize} × ${deltaContractValue})`);
-    console.log(`Pi42:  ${pi42Quantity.toFixed(4)}`);
+    console.log(`Pi42:  ${coindcxQuantity.toFixed(4)}`);
 
-    const maxQty = Math.max(deltaQuantity, pi42Quantity);
-    const qtyDiff = Math.abs(deltaQuantity - pi42Quantity);
+    const maxQty = Math.max(deltaQuantity, coindcxQuantity);
+    const qtyDiff = Math.abs(deltaQuantity - coindcxQuantity);
     const qtyDiffPct = maxQty > 0 ? (qtyDiff / maxQty) * 100 : 0;
 
     console.log(`Difference: ${qtyDiff.toFixed(4)} (${qtyDiffPct.toFixed(2)}%) | Tolerance: ${(this.quantityTolerance * 100).toFixed(1)}%`);
@@ -120,13 +128,16 @@ class TradeMonitor extends EventEmitter {
       // Emit event for dashboard
       this.emit('quantityMismatch', {
         deltaQty: deltaQuantity,
-        pi42Qty: pi42Quantity,
-        differencePct: qtyDiffPct
+        coindcxQty: coindcxQuantity,
+        differencePct: qtyDiffPct,
+        deltaPosition,
+        coindcxPosition
       });
 
       await this.emergencyExit('QUANTITY_MISMATCH', {
         reason: `Quantity mismatch exceeds ${this.quantityTolerance * 100}% tolerance`,
-        deltaQuantity, pi42Quantity, qtyDiffPct
+        deltaQuantity, coindcxQuantity, qtyDiffPct, deltaPosition,
+        coindcxPosition
       });
     } else {
       console.log('✅ Quantity check passed');
@@ -135,41 +146,41 @@ class TradeMonitor extends EventEmitter {
   }
 
   performFlipCheck() {
-    if ( !this.latestDeltaPosition || !this.latestPi42Position) return;
+    if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return;
     //  console.log('\n🔍 Performing Flip Safety Check...', this.latestDeltaPosition);
     const deltaSymbol = this.latestDeltaPosition.product_symbol;
-    const pi42Symbol = this.latestPi42Position.symbol || this.latestPi42Position.contractPair;
+    const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
 
     const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-    const pi42FRData = this.pi42Monitor.getFundingRate(pi42Symbol);
+    const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
-    if (!deltaFRData || !pi42FRData) {
+    if (!deltaFRData || !coindcxFRData) {
       console.log('⏳ Waiting for both funding rates...');
       console.log(`   Delta symbol: ${deltaSymbol} - FR: ${deltaFRData ? 'Found' : 'NOT FOUND'}`);
-      console.log(`   Pi42 symbol: ${pi42Symbol} - FR: ${pi42FRData ? 'Found' : 'NOT FOUND'}`);
+      console.log(`   Pi42 symbol: ${coindcxSymbol} - FR: ${coindcxFRData ? 'Found' : 'NOT FOUND'}`);
       return;
     }
 
     // Both rates are stored as decimals, convert to percentage
     const FR_delta = deltaFRData.rate;
-    const FR_pi42 = pi42FRData.rate * 100;
+    const FR_coindcx = coindcxFRData.rate;
 
     console.log('\n🔄 FLIP SAFETY CHECK');
     console.log('─'.repeat(60));
     console.log(`Delta FR:  ${FR_delta.toFixed(4)}%`);
-    console.log(`Pi42 FR:   ${FR_pi42.toFixed(4)}%`);
+    console.log(`Coindcx FR:   ${FR_coindcx.toFixed(4)}%`);
 
     let FR_first, FR_second, exchange_first, exchange_second;
 
-    if (Math.abs(FR_delta) >= Math.abs(FR_pi42)) {
+    if (Math.abs(FR_delta) >= Math.abs(FR_coindcx)) {
       FR_first = FR_delta;
-      FR_second = FR_pi42;
+      FR_second = FR_coindcx;
       exchange_first = 'Delta';
-      exchange_second = 'Pi42';
+      exchange_second = 'Coindcx';
     } else {
-      FR_first = FR_pi42;
+      FR_first = FR_coindcx;
       FR_second = FR_delta;
-      exchange_first = 'Pi42';
+      exchange_first = 'Coindcx';
       exchange_second = 'Delta';
     }
 
@@ -182,15 +193,15 @@ class TradeMonitor extends EventEmitter {
       console.log('❌ FLIP DETECTED → EMERGENCY EXIT');
       console.log('─'.repeat(60));
 
-      this.emit('flip', { diff, threshold: this.minProfitThreshold * 100, FR_delta, FR_pi42 });
+      this.emit('flip', { diff, threshold: this.minProfitThreshold * 100, FR_delta, FR_coindcx });
 
       this.emergencyExit('FLIP_DETECTED', {
         reason: `Funding profit dropped to ${diff.toFixed(4)}% < threshold ${this.minProfitThreshold * 100}%`,
         currentDiff: diff,
         deltaFR: FR_delta,
-        pi42FR: FR_pi42,
+        coindcxFR: FR_coindcx,
         deltaPosition: this.latestDeltaPosition,
-        pi42Position: this.latestPi42Position
+        coindcxPosition: this.latestCoindcxPosition
       });
     } else {
       console.log(`✅ Flip safe: ${diff.toFixed(4)}% profit remains`);
@@ -199,10 +210,17 @@ class TradeMonitor extends EventEmitter {
   }
 
   checkForNormalExit() {
-    if (!this.latestPi42Position) return;
+    if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return;
 
     const deltaSymbol = this.latestDeltaPosition.product_symbol;
     const frData = this.deltaMonitor.getFundingRate(deltaSymbol);
+
+    // Check if funding rate data exists
+    if (!frData) {
+      console.log('⏳ Waiting for Delta funding rate data...');
+      console.log(`   Symbol: ${deltaSymbol} - FR: NOT FOUND`);
+      return;
+    }
 
     const now = Date.now();
     const timeToFunding = frData.nextFundingTime - now;
@@ -210,6 +228,12 @@ class TradeMonitor extends EventEmitter {
     // Check if funding time passed by 10-15 seconds (configurable)
     const delayAfterFunding = 30000; // 30 seconds (10-15 range)
     const timeSinceFunding = Math.abs(timeToFunding);
+
+    console.log('\n⏰ Normal Exit Check:');
+    console.log(`   Current time: ${new Date(now).toLocaleTimeString()}`);
+    console.log(`   Next funding: ${new Date(frData.nextFundingTime).toLocaleTimeString()}`);
+    console.log(`   Time to funding: ${(timeToFunding / 1000).toFixed(0)}s`);
+    console.log(`   Delay after funding: ${(delayAfterFunding / 1000).toFixed(0)}s`)
 
     if (timeToFunding <= 0 && timeSinceFunding >= delayAfterFunding) {
       console.log('\n⏰ FUNDING PERIOD COMPLETED → NORMAL EXIT');
@@ -219,16 +243,14 @@ class TradeMonitor extends EventEmitter {
         reason: 'Funding period completed',
         nextFundingTime: new Date(frData.nextFundingTime).toLocaleString(),
         deltaPosition: this.latestDeltaPosition,
-        pi42Position: this.latestPi42Position
+        coindcxPosition: this.latestCoindcxPosition
       });
 
       this.normalExit({
         reason: 'Scheduled exit at funding time',
         fundingTimeReached: true,
-        details: {
-          deltaPosition: this.latestDeltaPosition,
-          pi42Position: this.latestPi42Position
-        }
+        deltaPosition: this.latestDeltaPosition,
+        coindcxPosition: this.latestCoindcxPosition
       });
     }
   }
@@ -276,7 +298,7 @@ class TradeMonitor extends EventEmitter {
   registerTrade(trade) {
     console.log('\n📝 TRADE REGISTERED FOR MONITORING');
     console.log('='.repeat(60));
-    console.log(`Delta: ${trade.deltaSymbol} | Pi42: ${trade.pi42Symbol}`);
+    console.log(`Delta: ${trade.deltaSymbol} | Pi42: ${trade.coindexSymbol}`);
     console.log('='.repeat(60));
 
     this.activeTrade = {
@@ -291,7 +313,7 @@ class TradeMonitor extends EventEmitter {
     console.log('🛑 Monitoring stopped - trade closed');
     this.activeTrade = null;
     this.latestDeltaPosition = null;
-    this.latestPi42Position = null;
+    this.latestCoindcxPosition = null;
   }
 
   async start() {
@@ -299,7 +321,7 @@ class TradeMonitor extends EventEmitter {
     console.log('='.repeat(60));
 
     this.deltaMonitor.connect();
-    await this.pi42Monitor.connect();
+    await this.coindcxMonitor.connect();
 
     console.log('✅ Monitor active: Quantity + Flip + Normal Exit protection enabled');
     console.log('='.repeat(60));
@@ -308,7 +330,7 @@ class TradeMonitor extends EventEmitter {
   stop() {
     console.log('\n🛑 Stopping Trade Monitor...');
     this.deltaMonitor.disconnect();
-    this.pi42Monitor.disconnect();
+    this.coindcxMonitor.disconnect();
     this.unregisterTrade();
     console.log('✅ Monitor stopped');
   }

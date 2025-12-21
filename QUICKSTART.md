@@ -280,3 +280,71 @@ Phase 2 will add:
 
 **Current Status**: ✅ Phase 1 Complete and Tested
 **Next Phase**: 🔄 Phase 2 (Position Sizing & Profit Calculation)
+
+
+
+postions:  {
+  reason: 'FLIP_DETECTED',
+  details: {
+    reason: 'Funding profit dropped to 0.1693% < threshold 1%',
+    currentDiff: 0.16930166746861913,
+    deltaFR: -0.2669506674686191,
+    coindcxFR: -0.097649,
+    deltaPosition: {
+      adl_level: null,
+      auto_topup: false,
+      bankruptcy_price: '0.026091',
+      commission: '0.00855205',
+      created_at: '2025-12-20T12:41:33.415169Z',
+      entry_price: 0.02899,
+      liquidation_price: '0.02681575',
+      margin: '1.4495',
+      margin_mode: 'isolated',
+      mark_price: 0.02878773,
+      product: [Object],
+      product_id: 84927,
+      product_symbol: 'SAHARAUSD',
+      realized_cashflow: '0.000000000000000000',
+      realized_funding: '0',
+      realized_holding_cost: '0',
+      realized_pnl: '0',
+      size: 5,
+      unrealized_pnl: -0.101135,
+      updated_at: '2025-12-20T12:41:33.415169Z',
+      user_id: 77050718,
+      sizeAbs: 5,
+      side: 'LONG',
+      unrealized_pnl_percent: -6.977233528803035,
+      price_change: -0.00020226999999999745
+    },
+    coindcxPosition: {
+      id: '361d6cd8-dda1-11f0-8d35-a3ee85a8fd0b',
+      pair: 'B-SAHARA_USDT',
+      active_pos: -1000,
+      inactive_pos_buy: 0,
+      inactive_pos_sell: 0,
+      avg_price: 0.02897,
+      liquidation_price: 0,
+      locked_margin: 2.897,
+      locked_user_margin: 2.9140923,
+      locked_order_margin: 0,
+      take_profit_trigger: null,
+      stop_loss_trigger: null,
+      leverage: 10,
+      maintenance_margin: 0.43456215,
+      mark_price: 0.02897081,
+      margin_type: 'crossed',
+      settlement_currency_avg_price: 1,
+      margin_currency_short_name: 'USDT',
+      updated_at: 1766234492690,
+      symbol: 'B-SAHARA_USDT',
+      side: 'SHORT',
+      size: 1000,
+      positionAmount: -1000
+    }
+  },
+  activeTrade: null,
+  timestamp: '2025-12-20T12:57:47.253Z',
+  deltaPosition: 0.0287622,
+  coindcxPosition: 0.02878
+}

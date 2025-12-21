@@ -15,47 +15,7 @@ class OrderExecutor {
     this.primaryThreshold = config.trading.primaryThreshold;
     this.secondaryThreshold = config.trading.secondaryThreshold;
     this.leverage = config.trading.leverage;
-    this.orderCooldownMinutes = config.trading.orderCooldownMinutes;
-
-    // Track last successful order execution time
-    this.lastExecutionTime = null;
-  }
-
-  /**
-   * Check if we are in cooldown period
-   * @returns {Object} - { inCooldown: boolean, remainingMinutes: number, message: string }
-   */
-  checkCooldown() {
-    if (!this.lastExecutionTime) {
-      return {
-        inCooldown: false,
-        remainingMinutes: 0,
-        message: 'No previous executions'
-      };
-    }
-
-    const now = Date.now();
-    const timeSinceLastExecution = now - this.lastExecutionTime;
-    const cooldownMs = this.orderCooldownMinutes * 60 * 1000;
-
-    if (timeSinceLastExecution < cooldownMs) {
-      const remainingMs = cooldownMs - timeSinceLastExecution;
-      const remainingMinutes = Math.ceil(remainingMs / 60000);
-
-      return {
-        inCooldown: true,
-        remainingMinutes,
-        remainingSeconds: Math.ceil(remainingMs / 1000),
-        lastExecutionTime: new Date(this.lastExecutionTime).toLocaleString(),
-        message: `Cooldown active: ${remainingMinutes} minute(s) remaining`
-      };
-    }
-
-    return {
-      inCooldown: false,
-      remainingMinutes: 0,
-      message: 'Cooldown period completed'
-    };
+    // NOTE: Cooldown is now managed by arbitrageEngine.js, not here
   }
 
   /**
@@ -526,15 +486,8 @@ class OrderExecutor {
     console.log(`✅ Delta: ${deltaContracts} contracts`);
     console.log(`✅ CoinDCX: ${coindcxRealQuantity} units`);
 
-    // Step 2: Cooldown Check
-    console.log('\n⏱️ Step 2: Checking cooldown...');
-    const cooldownCheck = this.checkCooldown();
-    if (cooldownCheck.inCooldown) {
-      return { success: false, stage: 'cooldown', cooldownInfo: cooldownCheck };
-    }
-
-    // Step 3: Re-check Funding Rate
-    console.log('\n📊 Step 3: Re-checking funding rate...');
+    // Step 2: Re-check Funding Rate (cooldown is checked in arbitrageEngine)
+    console.log('\n📊 Step 2: Re-checking funding rate...');
     const fundingCheck = this.recheckFundingRate(
       deltaFundingData,
       coindcxFundingData,
@@ -546,8 +499,8 @@ class OrderExecutor {
       return { success: false, stage: 'funding_recheck', reason: fundingCheck.reason };
     }
 
-    // Step 4: Determine Sides
-    console.log('\n📊 Step 4: Determining position sides...');
+    // Step 3: Determine Sides
+    console.log('\n📊 Step 3: Determining position sides...');
     const exchange_first = Math.abs(fundingCheck.FR_delta) >= Math.abs(fundingCheck.FR_coindcx) ? 'delta' : 'coindcx';
     const FR_first = exchange_first === 'delta' ? fundingCheck.FR_delta : fundingCheck.FR_coindcx;
 
@@ -557,15 +510,15 @@ class OrderExecutor {
     console.log(`   Delta: ${positions.deltaSide}`);
     console.log(`   CoinDCX: ${positions.coindcxSide}`);
 
-    // Step 5: Get Prices
+    // Step 4: Get Prices & Place Orders
     const deltaPrice = opportunity.phase2.positionSize.breakdown.delta.tradingPrice;
     const coindcxPrice = opportunity.phase2.positionSize.breakdown.coindcx?.tradingPrice || deltaPrice;
 
-    console.log(`\n🚀 Step 5: Placing orders...`);
+    console.log(`\n🚀 Step 4: Placing orders...`);
     console.log(`   Delta: ${positions.deltaSide} ${size} @ ${deltaPrice}`);
     console.log(`   CoinDCX: ${positions.coindcxSide} ${coindcxRealQuantity} @ ${coindcxPrice}`);
 
-    // Step 6: Execute Orders Simultaneously
+    // Execute orders simultaneously
     const [deltaOrder, coindcxOrder] = await Promise.all([
       this.placeOrderOnDelta(
         deltaProductId,
@@ -594,13 +547,8 @@ class OrderExecutor {
       };
     }
 
-    // Success!
-    this.lastExecutionTime = Date.now();
-    const nextTime = new Date(this.lastExecutionTime + this.orderCooldownMinutes * 60 * 1000);
-
+    // Success! (cooldown timestamp is managed by arbitrageEngine)
     console.log('\n✅ Arbitrage executed successfully on Delta + CoinDCX!');
-    console.log(`⏱️ Cooldown: ${this.orderCooldownMinutes} minutes`);
-    console.log(`   Next trade: ${nextTime.toLocaleString()}`);
 
     return {
       success: true,

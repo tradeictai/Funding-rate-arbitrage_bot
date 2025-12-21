@@ -146,11 +146,11 @@ class WebSocketServer {
       });
 
       // Pi42 position updates
-      this.engine.tradeMonitor.pi42Monitor.on('position', (data) => {
+      this.engine.tradeMonitor.coindcxMonitor.on('position', (data) => {
         // console.log('📡 Dashboard: Delta position update ->', data);
         if (data.type === 'update' || data.type === 'snapshot' || data.type === 'new') {
           this.io.emit('position:update', {
-            exchange: 'pi42',
+            exchange: 'coindcx',
             token: data.position.symbol || data.position.contractPair,
             position: {
               symbol: data.position.symbol,

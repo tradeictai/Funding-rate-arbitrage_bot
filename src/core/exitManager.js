@@ -2,6 +2,7 @@ import deltaAPI from '../services/deltaAPI.js';
 import pi42API from '../services/pi42API.js';
 import config from '../config/config.js';
 import mongoService from '../services/mongoService.js';
+import coindcxAPI from '../services/coindcxAPI.js';
 
 /**
  * Exit Manager - Phase 5
@@ -195,58 +196,92 @@ class ExitManager {
    * @param {number} exitPrice - Exit price
    * @returns {Promise<Object>} - Exit order result
    */
-  async exitPi42Position(position, exitPrice = null) {
-    try {
-      console.log("Existing Delta Position:", position);
-      console.log(`\n📤 Exiting Pi42 position: ${position.details.pi42Position.contractPair}`);
+async exitCoinDCXPosition(position, exitPrice = null) 
+{  
 
-      const size = Math.abs(position.details.pi42Position.quantity);
-      const side = position.details.pi42Position.positionType ===  'SHORT' ? 'BUY' : 'SELL'; // Opposite side to close
+  console.log("postions: ", position)
+  try {
 
-      // Use market order if no exit price specified
-      const orderType = exitPrice ? 'LIMIT' : 'MARKET';
+    const pair = position.details.coindcxPosition.pair || position.details.coindcxPosition.symbol
+    console.log(`\n📤 Exiting CoinDCX position: ${pair}`);
+
+    const positionId = position.details.coindcxPosition.id;
+    if (!positionId) {
+      throw new Error('Position ID required to exit');
+    }
+    
+    const leverage = Number(position.details.coindcxPosition.leverage) || 10;
+    // If exitPrice provided, use limit order for partial/full close (opposite side)
+    if (exitPrice) {
+      const size = Math.abs(position.details.coindcxPosition.active_pos || position.details.coindcxPosition.size || 0);
+      const sideToClose = position.details.coindcxPosition.side === "SHORT" ? 'buy' : 'sell'; // Opposite
+      // const roundedPrice = Math.round(Number(exitPrice) * 1000000) / 1000000;
 
       const orderParams = {
-        symbol: position.details.pi42Position.contractPair,
-        side: side,
-        orderType: orderType,
-        quantity: size,
-        price: exitPrice,
-        reduceOnly: true, // Important: reduce only to close position
-        positionId: position.details.pi42Position.positionId
+        order: {
+          pair: pair,
+          side: sideToClose,
+          order_type: 'limit_order',
+          total_quantity: size,
+          price: exitPrice,
+          leverage: leverage,
+          notification: 'no_notification',
+          position_margin_type: position.margin_type || 'crossed',
+          margin_currency_short_name: position.margin_currency_short_name || 'USDT'
+        }
       };
 
-      console.log('   Order type:', orderType);
-      console.log('   Side:', side);
-      console.log('   Quantity:', size);
-      if (exitPrice) console.log('   Exit price:', exitPrice);
+      const result = await coindcxAPI.placeOrder(orderParams);
 
-      const result = await pi42API.placeOrder(orderParams);
-
-      console.log('✅ Pi42 exit order placed successfully');
+      console.log('✅ CoinDCX limit exit order placed');
 
       return {
         success: true,
-        exchange: 'pi42',
-        orderId: result.orderId || result.clientOrderId,
-        symbol: position.symbol,
-        side: side,
+        exchange: 'coindcx',
+        orderId: result.id,
+        symbol:pair,
+        side: sideToClose,
         quantity: size,
-        orderType: orderType,
-        exitPrice: exitPrice,
-        result: result
-      };
-
-    } catch (error) {
-      console.error(`❌ Failed to exit Pi42 position:`, error.message);
-      return {
-        success: false,
-        exchange: 'pi42',
-        error: error.message
+        orderType: 'limit',
+        exitPrice,
+        result
       };
     }
-  }
 
+    // Market full close via Exit endpoint
+    // console.log(`   Using Market Exit for full position close`);
+    // console.log(`   Position ID: ${positionId}`);
+
+    // const body = { id: positionId };
+
+    // const result = await this.privateRequest(
+    //   'POST',
+    //   '/exchange/v1/derivatives/futures/positions/exit',
+    //   body,
+    //   true,  // trade credentials
+    //   true   // Buffer format
+    // );
+
+    // console.log('✅ CoinDCX position fully closed');
+
+    // return {
+    //   success: true,
+    //   exchange: 'coindcx',
+    //   groupId: result.group_id,
+    //   symbol: position.pair || position.symbol,
+    //   orderType: 'market_exit',
+    //   result
+    // };
+
+  } catch (error) {
+    console.error(`❌ Failed to exit CoinDCX position:`, error.message);
+    return {
+      success: false,
+      exchange: 'coindcx',
+      error: error.message
+    };
+  }
+}
   /**
    * Normal exit after funding credit (limit orders)
    * @param {Object} trade - Active trade object
@@ -254,25 +289,25 @@ class ExitManager {
    * @param {Object} pi42Position - Pi42 position
    * @returns {Promise<Object>} - Exit result
    */
-  async executeNormalExit(trade, deltaPosition, pi42Position) {
+  async executeNormalExit(trade, deltaPosition, coindcxPosition) {
     console.log('\n' + '='.repeat(60));
     console.log('🎯 EXECUTING NORMAL EXIT (POST-FUNDING)');
     console.log('='.repeat(60));
 
     try {
       // Wait for funding credit
-      const fundingResult = await this.waitForFundingCredit(trade);
+      // const fundingResult = await this.waitForFundingCredit(trade);
 
-      if (!fundingResult.success) {
-        console.log('⚠️  Funding not credited within timeout');
-        console.log('   Switching to immediate market exit for safety');
+      // if (!fundingResult.success) {
+      //   console.log('⚠️  Funding not credited within timeout');
+      //   console.log('   Switching to immediate market exit for safety');
 
-        // Fall back to emergency exit
-        return await this.executeEmergencyExit(trade, deltaPosition, pi42Position, {
-          reason: 'Funding credit timeout',
-          details: fundingResult
-        });
-      }
+      //   // Fall back to emergency exit
+      //   return await this.executeEmergencyExit(trade, deltaPosition, pi42Position, {
+      //     reason: 'Funding credit timeout',
+      //     details: fundingResult
+      //   });
+      // }
 
       // Funding credited, proceed with limit exits
       console.log('\n📊 Executing limit exits on both exchanges...');
@@ -282,16 +317,16 @@ class ExitManager {
       const pi42ExitPrice = pi42Position.markPrice;
 
       // Place exit orders on both exchanges
-      const [deltaExit, pi42Exit] = await Promise.all([
-        this.exitDeltaPosition(deltaPosition, deltaExitPrice),
-        this.exitPi42Position(pi42Position, pi42ExitPrice)
+      const [deltaExit, coindcxExit] = await Promise.all([
+        this.exitDeltaPosition(trade, trade.deltaPosition),
+        this.exitCoinDCXPosition(trade, trade.coindcxPosition)
       ]);
 
       // Check results
-      if (!deltaExit.success || !pi42Exit.success) {
+      if (!deltaExit.success || !coindcxExit.success) {
         console.error('\n❌ One or more exit orders failed:');
         if (!deltaExit.success) console.error(`   Delta: ${deltaExit.error}`);
-        if (!pi42Exit.success) console.error(`   Pi42: ${pi42Exit.error}`);
+        if (!coindcxExit.success) console.error(`   Coindcx: ${coindcxExit.error}`);
 
         return {
           success: false,
@@ -310,7 +345,7 @@ class ExitManager {
         success: true,
         type: 'normal_exit',
         deltaExit,
-        pi42Exit,
+        coindcxExit,
         fundingCredit: fundingResult,
         exitTime: new Date().toISOString()
       };
@@ -324,7 +359,7 @@ class ExitManager {
       console.error('\n❌ Normal exit failed:', error.message);
 
       // Fall back to emergency exit
-      return await this.executeEmergencyExit(trade, deltaPosition, pi42Position, {
+      return await this.executeEmergencyExit(trade, deltaPosition, coindcxPosition, {
         reason: 'Normal exit error',
         error: error.message
       });
@@ -351,23 +386,23 @@ class ExitManager {
       console.log('\n📊 Placing MARKET orders to close both positions...');
 
       // Place market orders on both exchanges (no price, immediate execution)
-      const [deltaExit, pi42Exit] = await Promise.all([
+      const [deltaExit, coindcxExit] = await Promise.all([
         this.exitDeltaPosition(trade, trade.deltaPosition), // null = market order
-        this.exitPi42Position(trade, trade.pi42Position)    // null = market order
+        this.exitCoinDCXPosition(trade, trade.coindcxPosition)    // null = market order
       ]);
 
       // Check results
-      if (!deltaExit.success || !pi42Exit.success) {
+      if (!deltaExit.success || !coindcxExit.success) {
         console.error('\n❌ CRITICAL: One or more emergency exit orders failed:');
         if (!deltaExit.success) console.error(`   Delta: ${deltaExit.error}`);
-        if (!pi42Exit.success) console.error(`   Pi42: ${pi42Exit.error}`);
+        if (!pi42Exit.success) console.error(`   Pi42: ${coindcxExit.error}`);
 
         return {
           success: false,
           type: 'emergency_exit',
           stage: 'exit_orders',
           deltaExit,
-          pi42Exit,
+          coindcxExit,
           reason: reason.reason,
           details: reason.details
         };
@@ -381,7 +416,7 @@ class ExitManager {
         success: true,
         type: 'emergency_exit',
         deltaExit,
-        pi42Exit,
+        coindcxExit,
         reason: reason.reason,
         details: reason.details,
         exitTime: new Date().toISOString()

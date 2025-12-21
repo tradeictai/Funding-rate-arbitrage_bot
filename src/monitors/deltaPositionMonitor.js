@@ -386,10 +386,10 @@ class DeltaPositionMonitor extends EventEmitter {
       );
 
       if (hasPosition) {
-        console.log(`💰 Delta Funding | ${symbol}: ${(rate * 100).toFixed(4)}% | Next: ${this.formatTimeRemaining(nextFundingTime - Date.now())}`);
+        console.log(`💰 Delta Funding | ${symbol}: ${(rate ).toFixed(4)}% | Next: ${this.formatTimeRemaining(nextFundingTime - Date.now())}`);
       }
 
-      this.emit('funding_rate', { symbol, fundingRate: rate * 100, nextFundingTime });
+      this.emit('funding_rate', { symbol, fundingRate: rate, nextFundingTime });
     }
   }
 
@@ -453,7 +453,7 @@ class DeltaPositionMonitor extends EventEmitter {
   getFundingRate(symbol) {
     // Try exact match first
     let result = this.fundingRates.get(symbol);
-
+    
     // If not found, try case-insensitive match
     if (!result) {
       const upperSymbol = symbol?.toUpperCase();

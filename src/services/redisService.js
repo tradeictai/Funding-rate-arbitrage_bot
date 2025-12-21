@@ -254,10 +254,19 @@ class RedisService {
    * Disconnect from Redis
    */
   async disconnect() {
-    if (this.client) {
-      await this.client.quit();
-      this.isConnected = false;
-      console.log('🔌 Disconnected from Redis');
+    if (this.client && this.isConnected) {
+      try {
+        await this.client.quit();
+        this.isConnected = false;
+        console.log('🔌 Disconnected from Redis');
+      } catch (error) {
+        // Ignore error if already closed
+        if (error.message && !error.message.includes('closed')) {
+          console.error('Error disconnecting from Redis:', error.message);
+        }
+        // Mark as disconnected regardless
+        this.isConnected = false;
+      }
     }
   }
 

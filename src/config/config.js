@@ -28,7 +28,7 @@ const config = {
       apiSecret: process.env.PI42_API_SECRET_trade || ''
     },
     coindcx: {
-     apiKey: process.env.COINDCX_API_KEY || '',
+      apiKey: process.env.COINDCX_API_KEY || '',
       apiSecret: process.env.COINDCX_API_SECRET || ''
     }
   },
@@ -74,7 +74,7 @@ const config = {
     paperTradingMode: process.env.PAPER_TRADING_MODE === 'true' || false, // Real trading mode enabled
 
     // Phase 3: Order Execution Cooldown
-    orderCooldownMinutes: parseInt(process.env.ORDER_COOLDOWN_MINUTES) || 120, // 15 minutes cooldown between orders
+    orderCooldownMinutes: parseInt(process.env.ORDER_COOLDOWN_MINUTES) || 120, // 120 minutes (2 hours) cooldown between trades
 
     // Phase 4: Trade Monitoring
     quantityTolerance: parseFloat(process.env.QUANTITY_TOLERANCE) || 0, // 5% tolerance for quantity mismatch

@@ -18,7 +18,7 @@ class CoinDCXAPI {
     this.apiSecret = config.orderPlace.coindcx.apiSecret;
 
     // If you have separate trade keys, add them here
-    this.apiKeyTrade =config.orderPlace.coindcx.apiKey;
+    this.apiKeyTrade = config.orderPlace.coindcx.apiKey;
     this.apiSecretTrade = config.orderPlace.coindcx.apiSecret;
   }
 
@@ -27,7 +27,7 @@ class CoinDCXAPI {
    * @param {Object} body - Request body
    * @returns {{payload: string, signature: string}}
    */
-    generateAuth(body, useBufferFormat = false) {
+  generateAuth(body, useBufferFormat = false) {
     const timestamp = Math.floor(Date.now()); // Milliseconds
     const fullBody = { ...body, timestamp };
 
@@ -229,11 +229,11 @@ class CoinDCXAPI {
    * @param {string} pair - e.g., 'B-BTC_USDT'
    * @returns {Promise<Object>}
    */
-async getOrderbook(pair, limit = 20) {
+  async getOrderbook(pair, limit = 20) {
     try {
       const data = await this.publicRequest(`/market_data/v3/orderbook/${pair}-futures/${limit}`);
-    //   console.log('✅ CoinDCX Orderbook fetched:', pair);
-    //   console.log("Data", data)
+      //   console.log('✅ CoinDCX Orderbook fetched:', pair);
+      //   console.log("Data", data)
       return {
         bids: Object.entries(data.bids || {})
           .map(([p, q]) => [parseFloat(p), parseFloat(q)])
@@ -309,80 +309,80 @@ async getOrderbook(pair, limit = 20) {
  * Updated & Fixed for your calling style: placeOrder({ order: { ... } })
  * Matches official docs exactly
  */
-async placeOrder(orderParams) {
-  console.log("Raw orderParams received:", orderParams);
+  async placeOrder(orderParams) {
+    console.log("Raw orderParams received:", orderParams);
 
-  // Handle both direct object and { order: {...} } wrapper
-  let params = orderParams;
-  if (orderParams.order) {
-    params = orderParams.order;
-  }
+    // Handle both direct object and { order: {...} } wrapper
+    let params = orderParams;
+    if (orderParams.order) {
+      params = orderParams.order;
+    }
 
-  const {
-    pair,               // e.g., "B-BTC_USDT"
-    side,                 // "buy" or "sell"
-    order_type = 'market', // "limit" or "market"
-    total_quantity,
-    price = null,
-    leverage = this.leverage || null, // fallback to class leverage
-    notification = "no_notification",
-    position_margin_type = "crossed",   // "crossed" or "isolated"
-    margin_currency_short_name = "USDT"           // "USDT" or "INR"
-  } = params;
+    const {
+      pair,               // e.g., "B-BTC_USDT"
+      side,                 // "buy" or "sell"
+      order_type = 'market', // "limit" or "market"
+      total_quantity,
+      price = null,
+      leverage = this.leverage || 10, // fallback to class leverage
+      notification = "no_notification",
+      position_margin_type = "crossed",   // "crossed" or "isolated"
+      margin_currency_short_name = "USDT"           // "USDT" or "INR"
+    } = params;
 
-  // Validation
-  if (!pair || !side || !total_quantity) {
-    throw new Error('Missing required fields: symbol, side, quantity');
-  }
+    // Validation
+    if (!pair || !side || !total_quantity) {
+      throw new Error('Missing required fields: symbol, side, quantity');
+    }
 
-  if (order_type.toLowerCase() === 'limit' && (price === null || price <= 0)) {
-    throw new Error('Valid price is required for limit orders');
-  }
+    if (order_type.toLowerCase() === 'limit' && (price === null || price <= 0)) {
+      throw new Error('Valid price is required for limit orders');
+    }
 
-  const isLimit = order_type.toLowerCase() === 'limit';
+    const isLimit = order_type.toLowerCase() === 'limit';
 
-  const orderObj = {
-    pair: pair,
-    side: side.toLowerCase(),
-    order_type: order_type,
-    total_quantity: Number(total_quantity)
-  };
+    const orderObj = {
+      pair: pair,
+      side: side.toLowerCase(),
+      order_type: order_type,
+      total_quantity: Number(total_quantity)
+    };
 
 
     orderObj.price = parseFloat(price);
     orderObj.time_in_force = 'good_till_cancel'; // Safe default
 
 
-  // Optional but recommended fields
-orderObj.leverage  = leverage
-  orderObj.notification = notification;
-  orderObj.position_margin_type = position_margin_type.toLowerCase();
-  orderObj.margin_currency_short_name = margin_currency_short_name;
+    // Optional but recommended fields
+    orderObj.leverage = leverage
+    orderObj.notification = notification;
+    orderObj.position_margin_type = position_margin_type.toLowerCase();
+    orderObj.margin_currency_short_name = margin_currency_short_name;
 
-  const body = { order: orderObj };
+    const body = { order: orderObj };
 
-  console.log('📤 Final CoinDCX order payload:', JSON.stringify(body, null, 2));
+    console.log('📤 Final CoinDCX order payload:', JSON.stringify(body, null, 2));
 
-  try {
-    const result = await this.privateRequest(
-      'POST',
-      '/exchange/v1/derivatives/futures/orders/create',
-      body,
-      true,   // useTradeCreds
-      true    // useBufferFormat = true → critical for CoinDCX
-    );
+    try {
+      const result = await this.privateRequest(
+        'POST',
+        '/exchange/v1/derivatives/futures/orders/create',
+        body,
+        true,   // useTradeCreds
+        true    // useBufferFormat = true → critical for CoinDCX
+      );
 
-    console.log('✅ CoinDCX order placed successfully:', result);
+      console.log('✅ CoinDCX order placed successfully:', result);
 
-    // Response is usually an array with one object
-    const orderResult = Array.isArray(result) ? result[0] : result;
+      // Response is usually an array with one object
+      const orderResult = Array.isArray(result) ? result[0] : result;
 
-    return orderResult;
-  } catch (error) {
-    console.error('❌ CoinDCX order failed:', error.message);
-    throw error;
+      return orderResult;
+    } catch (error) {
+      console.error('❌ CoinDCX order failed:', error.message);
+      throw error;
+    }
   }
-}
   /**
    * Get open orders
    */

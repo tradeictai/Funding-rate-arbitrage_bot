@@ -260,9 +260,9 @@ class PositionSizer {
     console.log("refwewefwef", coindcxOrderbookRaw)
     const coindcxOrderbook = this.normalizeOrderbook(coindcxOrderbookRaw, 'coindcx');
 
- console.log("erfewrwefwe",  coindcxOrderbook)
+    console.log("erfewrwefwe", coindcxOrderbook)
     const coindcxTPResult = this.calculateTradingPriceFromOrderbook(coindcxOrderbook, coindcxSide, A_Q_ex1);
-     console.log("coinDedrfwae", coindcxTPResult)
+    console.log("coinDedrfwae", coindcxTPResult)
     if (!coindcxTPResult.feasible) {
       console.log(`❌ Cannot execute on Coindcx: ${coindcxTPResult.reason}`);
       return {
