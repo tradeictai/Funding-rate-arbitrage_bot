@@ -395,7 +395,7 @@ async exitCoinDCXPosition(position, exitPrice = null)
       if (!deltaExit.success || !coindcxExit.success) {
         console.error('\n❌ CRITICAL: One or more emergency exit orders failed:');
         if (!deltaExit.success) console.error(`   Delta: ${deltaExit.error}`);
-        if (!pi42Exit.success) console.error(`   Pi42: ${coindcxExit.error}`);
+        if (!coindcxExit.success) console.error(`   Pi42: ${coindcxExit.error}`);
 
         return {
           success: false,

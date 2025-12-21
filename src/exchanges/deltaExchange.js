@@ -120,11 +120,15 @@ class DeltaExchange extends EventEmitter {
         }
       }
 
-      // Also update funding rate if available
+      // Also update funding rate if available (only if we have existing data)
       if (msg.funding_rate !== undefined) {
-        const existing = this.data.get(symbol) || {};
-        existing.fundingRate = Number(msg.funding_rate);
-        this.data.set(symbol, existing);
+        const existing = this.data.get(symbol);
+        if (existing) {
+          // Only update if we already have a data object from v2/ticker
+          existing.fundingRate = Number(msg.funding_rate);
+          this.data.set(symbol, existing);
+        }
+        // If no existing data, wait for v2/ticker to create the full object
       }
 
       return;
@@ -260,10 +264,11 @@ class DeltaExchange extends EventEmitter {
    * @returns {Array<Object>}
    */
   getSymbolsSortedByFundingRate() {
+    // console.log(this.data)
     const symbols = Array.from(this.data.values())
       .filter(d => d.fundingRate !== null)
       .sort((a, b) => Math.abs(b.fundingRate) - Math.abs(a.fundingRate));
-
+      // console.log(symbols)
     return symbols;
   }
 

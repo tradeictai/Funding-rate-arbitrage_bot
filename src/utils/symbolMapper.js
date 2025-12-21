@@ -255,7 +255,7 @@ this.deltaToPi42Map = new Map([
   ['WLFIUSD', 'WLFIUSDT'],
   ['LINKUSD', 'LINKUSDT'],
   ['SOPHUSD', 'SOPHUSDT'],
-  ['MUSD', 'MUSDT'],
+  // ['MUSD', 'MUSDT'],
   ['ZENUSD', 'ZENUSDT'],
 ]);
     // Reverse mapping

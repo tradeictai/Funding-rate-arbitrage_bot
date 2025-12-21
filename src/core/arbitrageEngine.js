@@ -35,31 +35,37 @@ class ArbitrageEngine extends EventEmitter {
 
     // Exchange instances
     this.deltaExchange = new DeltaExchange();
-    this.pi42Exchange = new BinanceExchange();
+    this.coindcxExchange = new BinanceExchange();
 
     // State
     this.isRunning = false;
-    this.opportunities = new Map();
-    this.lastDecision = null;
-    this.lastTradeExecutionTime = null; // Track last successful trade execution
-     this.isExecuting = false;
+    this.isExecuting = false;
+    this.hasActivePosition = false;
+
     // Thresholds
-    this.TH1 = config.trading.primaryThreshold;      // 0.1%
-    this.TH2 = config.trading.secondaryThreshold;    // 0.1%
-    this.fundingTimeWindow = config.trading.fundingTimeWindowSeconds; // 60 seconds
-    this.orderbookDepth = config.trading.orderbookDepth;
+    this.TH1 = config.trading.primaryThreshold;
+    this.TH2 = config.trading.secondaryThreshold;
 
-    // Phase 2 configuration
+    this.fundingTimeWindow = config.trading.fundingTimeWindowSeconds;
+    this.preFundingWindowMinutes = config.trading.preFundingWindowMinutes || 5; // NEW
+    this.preFundingWindowMs = this.preFundingWindowMinutes * 60 * 1000;
+    this.orderCooldownMs = config.trading.orderCooldownMinutes * 60 * 1000;
     this.paperTradingMode = config.trading.paperTradingMode;
-    this.phase2Enabled = false; // Enable Phase 2 evaluation
+    this.phase2Enabled = config.trading.phase2Enabled || false;
+    this.phase3Enabled = config.trading.phase3Enabled || false;
 
-    // Phase 3 configuration
-    this.phase3Enabled = false; // Enable Phase 3 order execution
-    this.orderCooldownMs = config.trading.orderCooldownMinutes * 60 * 1000; // Convert minutes to milliseconds
 
-    // Phase 4 & 5: Trade Monitor and Exit Manager
-    this.tradeMonitor = null; // Initialized after exchanges connect
-    this.activeTrade = null; // Current active trade being monitored
+
+    this.opportunities = new Map();
+
+
+
+    this.orderbookDepth = config.trading.orderbookDepth;
+    this.lastDecision = null;
+
+    this.tradeMonitor = null;
+    this.activeTrade = null;
+    this.lastTradeExecutionTime = null;
 
     // Bind event handlers
     this.setupEventHandlers();
@@ -79,12 +85,12 @@ class ArbitrageEngine extends EventEmitter {
     });
 
     // Pi42 updates
-    this.pi42Exchange.on('batchUpdate', async () => {
+    this.coindcxExchange.on('batchUpdate', async () => {
       await this.processPotentialOpportunities();
     });
 
-    this.pi42Exchange.on('connected', () => {
-      console.log('📊 Pi42 Exchange connected and streaming data');
+    this.coindcxExchange.on('connected', () => {
+      console.log('📊 Coindcx Exchange connected and streaming data');
     });
   }
 
@@ -145,30 +151,32 @@ class ArbitrageEngine extends EventEmitter {
       await mongoService.connect();
 
       // Connect to exchanges
-      // this.deltaExchange.connect();
-      // this.pi42Exchange.connect();
+      this.deltaExchange.connect();
+      this.coindcxExchange.connect();
 
       // Initialize and start Trade Monitor (Phase 4)
       if (!this.paperTradingMode) {
         console.log('\n🔄 Initializing Trade Monitor (Phase 4)...');
-        this.tradeMonitor = new TradeMonitor(this.deltaExchange, this.pi42Exchange);
+        this.tradeMonitor = new TradeMonitor(this.deltaExchange, this.coindcxExchange);
         this.setupTradeMonitorHandlers();
         await this.tradeMonitor.start();
       }
 
       this.isRunning = true;
 
-      console.log('━'.repeat(50));
-      console.log('✅ Arbitrage Engine started successfully');
-      console.log(`📈 Primary Threshold (TH1): ${this.TH1}%`);
-      console.log(`📊 Secondary Threshold (TH2): ${this.TH2}%`);
-      console.log(`⏱️  Funding Time Window: ${this.fundingTimeWindow}s`);
-      console.log(`🔧 Phase 2 Enabled: ${this.phase2Enabled}`);
-      console.log(`⚡ Phase 3 Enabled: ${this.phase3Enabled}`);
-      console.log(`📝 Paper Trading Mode: ${this.paperTradingMode}`);
-      console.log(`🔍 Trade Monitoring: ${!this.paperTradingMode ? 'ENABLED' : 'DISABLED (Paper Trading)'}`);
-      console.log(`⏳ Order Cooldown: ${config.trading.orderCooldownMinutes} minutes between trades`);
-      console.log('━'.repeat(50));
+      console.log('━'.repeat(70));
+      console.log('Arbitrage Engine started successfully');
+      console.log(`Primary Threshold (TH1): ${this.TH1}%`);
+      console.log(`Secondary Threshold (TH2): ${this.TH2}%`);
+      console.log(`Funding Time Window: ${this.fundingTimeWindowSeconds}s`);
+      console.log(`Pre-Funding Trigger Window: < ${this.preFundingWindowMinutes} minutes`);
+      console.log(`Phase 2 Enabled: ${this.phase2Enabled}`);
+      console.log(`Phase 3 Enabled: ${this.phase3Enabled}`);
+      console.log(`Paper Trading Mode: ${this.paperTradingMode}`);
+      console.log(`Trade Monitoring: ${!this.paperTradingMode ? 'ENABLED' : 'DISABLED'}`);
+      console.log(`Order Cooldown: ${this.orderCooldownMs} minutes`);
+      console.log(`Current Position Lock: ${this.hasActivePosition ? 'LOCKED' : 'UNLOCKED'}`);
+      console.log('━'.repeat(70));
 
       this.emit('started');
     } catch (error) {
@@ -195,84 +203,80 @@ class ArbitrageEngine extends EventEmitter {
    * This is the main Phase 1 logic - BIDIRECTIONAL SEARCH
    */
   async processPotentialOpportunities() {
-    if (!this.isRunning) return;
-
-    try {
-      // Step 1: Get top candidates from BOTH exchanges
-      const deltaSymbols = this.deltaExchange.getSymbolsSortedByFundingRate();
-      const BinanceSymbols = this.pi42Exchange.getSymbolsSortedByFundingRate();
-
-      if (deltaSymbols.length === 0) {
-        console.log('⏳ Waiting for Delta funding rate data...');
-        return;
-      }
-
-      if (BinanceSymbols.length === 0) {
-        console.log('⏳ Waiting for Binance funding rate data...');
-        return;
-      }
-
-      const topN = 15; // Check top 15 from each exchange
-      const deltaTop = deltaSymbols.slice(0, topN);
-      const BinanceTop = BinanceSymbols.slice(0, topN);
-
-      console.log(`\n🔍 Scanning: Top ${deltaTop.length} Delta tokens vs Top ${BinanceTop.length} Binance tokens`);
-
-      // Step 2: Collect all valid opportunities
-      const allOpportunities = [];
-      const checkedPairs = new Set(); // Track which pairs we've already evaluated
-
-      // 2a. Check Delta top tokens against Pi42
-      for (const deltaData of deltaTop) {
-        const deltaSymbol = deltaData.symbol;
-        const BinanceSymbol = symbolMapper.deltaToPi42(deltaSymbol);
-
-        if (!BinanceSymbol) continue;
-
-        const pairKey = `${deltaSymbol}-${BinanceSymbol}`;
-        checkedPairs.add(pairKey);
-
-        const opportunity = await this.evaluateOpportunityFromDelta(deltaData);
-        if (opportunity) {
-          allOpportunities.push(opportunity);
-        }
-      }
-
-      // 2b. Check Pi42 top tokens against Delta (avoid duplicates)
-      for (const binanceData of BinanceTop) {
-        const binanceSymbol = binanceData.symbol;
-        const deltaSymbol = symbolMapper.pi42ToDelta(binanceSymbol);
-
-        if (!deltaSymbol) continue;
-
-        const pairKey = `${deltaSymbol}-${binanceSymbol}`;
-        // Skip if we already checked this pair
-        if (checkedPairs.has(pairKey)) continue;
-
-        checkedPairs.add(pairKey);
-
-        const opportunity = await this.evaluateOpportunityFromPi42(binanceData);
-        if (opportunity) {
-          allOpportunities.push(opportunity);
-        }
-      }
-
-      // Step 3: Rank opportunities by funding differential (highest first)
-      if (allOpportunities.length > 0) {
-        allOpportunities.sort((a, b) => b.fundingDiff - a.fundingDiff);
-
-        console.log(`✅ Found ${allOpportunities.length} valid opportunity(ies)`);
-        console.log(`🎯 Best opportunity: ${allOpportunities[0].token} with ${allOpportunities[0].fundingDiff.toFixed(4)}% differential\n`);
-
-        // Handle the best opportunity
-        await this.handleOpportunity(allOpportunities[0]);
-      } else {
-        console.log(`❌ No opportunities found (checked ${checkedPairs.size} unique pairs)`);
-      }
-
-    } catch (error) {
-      console.error('Error processing opportunities:', error);
+    if (!this.isRunning || this.isExecuting || this.hasActivePosition) {
+      console.log(`\nScanning blocked → Executing: ${this.isExecuting} | Active Position: ${this.hasActivePosition}`);
+      return;
     }
+    const coindcxTopSymbols = this.coindcxExchange.getSymbolsSortedByFundingRate();
+    const deltaTopSymbols = this.deltaExchange.getSymbolsSortedByFundingRate();
+    // const coindcxTopSymbols = this.coindcxExchange.getSymbolsSortedByFundingRate();
+
+    // console.log("DeltaTopSymbols", deltaTopSymbols)
+    // console.log("CoindcxTopSymbols", coindcxTopSymbols)
+    const validDeltaTop = deltaTopSymbols.filter(item => item && item.symbol && typeof item.symbol === 'string');
+    const validCoindcxTop = coindcxTopSymbols.filter(item => item && item.symbol && typeof item.symbol === 'string');
+
+    if (validDeltaTop.length <= 1 && validCoindcxTop.length <= 1) {
+      console.log('Waiting for valid funding data from both exchanges...');
+      return;
+    }
+
+    console.log(`\nScanning Top 15 from Delta & Coindcx for opportunities...`);
+
+    const qualifiedOpportunities = [];
+    const checkedPairs = new Set();
+
+    // Bidirectional evaluation
+    for (const deltaData of deltaTopSymbols) {
+      // console.log("delatdat", deltaData)
+      const coindcxSymbol = symbolMapper.deltaToPi42(deltaData.symbol);
+      if (!coindcxSymbol || checkedPairs.has(`${deltaData.symbol}-${coindcxSymbol}`)) continue;
+      checkedPairs.add(`${deltaData.symbol}-${coindcxSymbol}`);
+
+      const opportunity = await this.evaluateOpportunityFromDelta(deltaData, this.coindcxExchange.getFundingData(coindcxSymbol));
+      if (opportunity) qualifiedOpportunities.push(opportunity);
+    }
+
+
+    console.log("Pass delata")
+    for (const coindcxData of coindcxTopSymbols) {
+      const deltaSymbol = symbolMapper.pi42ToDelta(coindcxData.symbol);
+
+      // console.log(deltaSymbol)
+      if (!deltaSymbol || checkedPairs.has(`${deltaSymbol}-${coindcxData.symbol}`)) continue;
+      checkedPairs.add(`${deltaSymbol}-${coindcxData.symbol}`);
+
+      const opportunity = await this.evaluateOpportunityFromCoindcx(coindcxData, this.deltaExchange.getFundingData(deltaSymbol));
+      if (opportunity) qualifiedOpportunities.push(opportunity);
+    }
+
+    console.log("Pass Coindcx")
+
+    if (qualifiedOpportunities.length === 0) {
+      console.log(`No opportunities found within ${this.preFundingWindowMinutes}-minute pre-funding window`);
+      return;
+    }
+
+    // Add priority score: higher diff + closer to funding = higher priority
+
+
+
+    qualifiedOpportunities.forEach(opportunity => {
+      opportunity.priorityScore = opportunity.fundingDiff + (5000000 / Math.max(opportunity.timeToFundingMs, 60000));
+    });
+
+    qualifiedOpportunities.sort((a, b) => b.priorityScore - a.priorityScore);
+
+    const bestOpportunity = qualifiedOpportunities[0];
+    const minutesToFunding = (bestOpportunity.timeToFundingMs / 60000).toFixed(1);
+
+    console.log(`\nFound ${qualifiedOpportunities.length} qualified opportunities`);
+    console.log(`BEST OPPORTUNITY: ${bestOpportunity.token}`);
+    console.log(`   Funding Diff: ${bestOpportunity.fundingDiff.toFixed(4)}%`);
+    console.log(`   Time to Funding: ${minutesToFunding} minutes`);
+    console.log(`   Priority Score: ${bestOpportunity.priorityScore.toFixed(0)}`);
+
+    await this.handleOpportunity(bestOpportunity);
   }
 
   /**
@@ -282,14 +286,14 @@ class ArbitrageEngine extends EventEmitter {
    */
   async evaluateOpportunityFromDelta(deltaData) {
     const deltaSymbol = deltaData.symbol;
-    const pi42Symbol = symbolMapper.deltaToPi42(deltaSymbol);
+    const coindcxSymbol = symbolMapper.deltaToPi42(deltaSymbol);
 
-    if (!pi42Symbol) return null;
+    if (!coindcxSymbol) return null;
 
-    const pi42Data = this.pi42Exchange.getFundingData(pi42Symbol);
-    if (!pi42Data) return null;
+    const coindcxData = this.coindcxExchange.getFundingData(coindcxSymbol);
+    if (!coindcxData) return null;
 
-    return this.evaluateOpportunity(deltaData, pi42Data);
+    return this.evaluateOpportunity(deltaData, coindcxData);
   }
 
   /**
@@ -297,16 +301,16 @@ class ArbitrageEngine extends EventEmitter {
    * @param {Object} pi42Data - Pi42 exchange funding data
    * @returns {Object|null} - Opportunity object or null
    */
-  async evaluateOpportunityFromPi42(pi42Data) {
-    const pi42Symbol = pi42Data.symbol;
-    const deltaSymbol = symbolMapper.pi42ToDelta(pi42Symbol);
+  async evaluateOpportunityFromCoindcx(coindcxData) {
+    const coindcxSymbol = coindcxData.symbol;
+    const deltaSymbol = symbolMapper.pi42ToDelta(coindcxSymbol);
 
     if (!deltaSymbol) return null;
 
     const deltaData = this.deltaExchange.getFundingData(deltaSymbol);
     if (!deltaData) return null;
 
-    return this.evaluateOpportunity(deltaData, pi42Data);
+    return this.evaluateOpportunity(deltaData, coindcxData);
   }
 
   /**
@@ -318,6 +322,7 @@ class ArbitrageEngine extends EventEmitter {
    * @returns {Object|null} - Opportunity object or null
    */
   async evaluateOpportunity(deltaData, binanceData) {
+    // console.log(deltaData, binanceData)
     const deltaSymbol = deltaData.symbol;
     const binanceSymbol = binanceData.symbol;
 
@@ -328,7 +333,8 @@ class ArbitrageEngine extends EventEmitter {
     const FT_EX1_ts = deltaData.nextFundingTime;
     const FR_EX2 = binanceData.fundingRate;
     const FT_EX2_ts = binanceData.nextFundingTime;
-
+    const deltaNextFundingTime = deltaData.nextFundingTime;
+    const coindcxNextFundingTime = binanceData.nextFundingTime;
 
     console.log(`   Delta FR: ${FR_EX1}%, Next FT: ${FT_EX1_ts ? new Date(FT_EX1_ts).toLocaleString() : 'N/A'}`);
     console.log(`   Binance  FR: ${FR_EX2}%, Next FT: ${FT_EX2_ts ? new Date(FT_EX2_ts).toLocaleString() : 'N/A'}`);
@@ -373,6 +379,16 @@ class ArbitrageEngine extends EventEmitter {
 
     console.log(`   Funding Rate Diff: ${diff}%`);
 
+    const now = Date.now();
+    const timeToDeltaFunding = deltaNextFundingTime - now;
+    const timeToCoindcxFunding = coindcxNextFundingTime - now;
+    const timeToFundingMs = Math.min(timeToDeltaFunding, timeToCoindcxFunding);
+
+    if (timeToFundingMs > this.preFundingWindowMs || timeToFundingMs < 0) {
+      console.log(`   ${(timeToFundingMs / 60000).toFixed(1)} min to funding → Outside ${this.preFundingWindowMinutes}-min window → Skipped`);
+      return null;
+    }
+
     // Step 8: Check thresholds
     const thresholdResult = this.checkThresholds(diff);
 
@@ -388,6 +404,8 @@ class ArbitrageEngine extends EventEmitter {
       token: deltaSymbol,
       binanceSymbol: binanceSymbol,
       timestamp: Date.now(),
+      timeToFundingMs: timeToFundingMs,
+      priorityScore: 0, // will be set later
 
       // Funding rates
       FR_delta: FR_EX1,
@@ -414,9 +432,10 @@ class ArbitrageEngine extends EventEmitter {
 
       // Phase
       phase: 1,
-      status: 'identified'
+      // direction: absDelta > absCoindcx ? 'LONG_DELTA_SHORT_COINCX' : 'LONG_COINCX_SHORT_DELTA',
+      status: 'qualified'
     };
-    // console.log('   Opportunity identified:879999999999999999999999999999999999', opportunity);
+
     return opportunity;
   }
 
@@ -483,20 +502,29 @@ class ArbitrageEngine extends EventEmitter {
    * @param {Object} opportunity - Opportunity object
    */
   async handleOpportunity(opportunity) {
-     
-
-      // If we are currently placing an order, IGNORE this new trigger immediately
+    // Prevent overlapping executions
     if (this.isExecuting) {
       console.log(`⚠️ Skipping opportunity for ${opportunity.token}: Currently executing another trade.`);
-      return; 
+      return;
     }
+
+    // CRITICAL: Block new trades if we still have an open position from previous trade
+    if (this.hasActivePosition) {
+      console.log(`\n🚫 BLOCKED: Active position exists for previous trade → Skipping ${opportunity.token}`);
+      return;
+    }
+
+    // SET EXECUTION LOCK IMMEDIATELY to prevent race conditions
+    // This must be set BEFORE any await operations to prevent duplicate executions
+    this.isExecuting = true;
+    console.log('🔒 Execution lock acquired');
 
     const opportunityId = `${opportunity.token}_${opportunity.timestamp}`;
 
     console.log('\n' + '='.repeat(60));
     console.log('🎯 PHASE 1: ARBITRAGE OPPORTUNITY DETECTED');
     console.log('='.repeat(60));
-    console.log(`Token:           ${opportunity.token} / ${opportunity.pi42Symbol}`);
+    console.log(`Token:           ${opportunity.token} / ${opportunity.binanceSymbol}`);
     console.log(`Funding Diff:    ${opportunity.fundingDiff.toFixed(4)}%`);
     console.log(`Threshold:       ${opportunity.threshold}% (${opportunity.thresholdType})`);
     console.log(`Delta FR:        ${opportunity.FR_delta.toFixed(4)}%`);
@@ -507,7 +535,7 @@ class ArbitrageEngine extends EventEmitter {
     console.log(`Binance Funding:    ${opportunity.FT_binance ? new Date(opportunity.FT_binance).toLocaleString() : 'N/A'}`);
     console.log('='.repeat(60));
 
-    // Phase 2: Evaluate profitability
+    // Phase 2: Evaluate profitability (position sizing, etc.)
     if (this.phase2Enabled) {
       const phase2Result = await this.evaluatePhase2(opportunity);
 
@@ -521,6 +549,9 @@ class ArbitrageEngine extends EventEmitter {
           status: 'rejected_phase2'
         });
 
+        // Release execution lock
+        this.isExecuting = false;
+        console.log('🔓 Execution lock released (Phase 2 rejection)');
         return;
       }
 
@@ -528,19 +559,12 @@ class ArbitrageEngine extends EventEmitter {
       opportunity.phase2 = phase2Result;
     }
 
-    // Store in memory
+    // Store in memory and Redis
     this.opportunities.set(opportunityId, opportunity);
-
-    // Cache in Redis
     await redisService.storeOpportunity(opportunityId, opportunity);
 
-    // Persist to MongoDB
-    // await mongoService.storeOpportunity(opportunity);
-
-    // Phase 3: Execute trades if enabled and not in paper trading mode
+    // Phase 3: Real order execution
     let executionResult = null;
-
-    // this.phase2Enabled = false
 
     if (this.phase3Enabled && !this.paperTradingMode) {
       // Check cooldown period
@@ -555,27 +579,25 @@ class ArbitrageEngine extends EventEmitter {
           console.log(`   Next trade allowed: ${new Date(this.lastTradeExecutionTime + this.orderCooldownMs).toLocaleString()}`);
           console.log(`   Skipping execution for ${opportunity.token}\n`);
 
-          // Store skipped opportunity
           opportunity.status = 'skipped_cooldown';
           await mongoService.storeOpportunity(opportunity);
 
-          return; // Skip this opportunity
+          // Release execution lock
+          this.isExecuting = false;
+          console.log('🔓 Execution lock released (Cooldown skip)');
+          return;
         } else {
           console.log(`✅ Cooldown period expired. Ready to execute new trade.`);
         }
       }
 
-      // 🔴 SET EXECUTION LOCK
-      this.isExecuting = true;
-
       try {
         console.log('\n🚀 Proceeding to Phase 3: Order Execution...', opportunity);
 
-        // Get fresh funding data before execution
+        // Get fresh funding data right before execution
         const deltaFundingData = this.deltaExchange.getFundingData(opportunity.token);
-        const coindcxFundingData = this.pi42Exchange.getFundingData(opportunity.binanceSymbol);
+        const coindcxFundingData = this.coindcxExchange.getFundingData(opportunity.binanceSymbol);
 
-        // console.log("dfhaskdfas", deltaFundingData,coindcxFundingData )
         if (!deltaFundingData || !coindcxFundingData) {
           console.error('❌ Cannot execute: Fresh funding data not available');
         } else {
@@ -586,24 +608,27 @@ class ArbitrageEngine extends EventEmitter {
             coindcxFundingData
           );
 
-          // Store execution result
+          // Attach result
           opportunity.phase3 = executionResult;
 
           if (executionResult.success) {
             console.log('\n✅ PHASE 3: Orders executed successfully on both exchanges!');
 
-            // Update last trade execution time for cooldown
+            // Update cooldown timer
             this.lastTradeExecutionTime = Date.now();
             console.log(`⏱️  Trade execution timestamp recorded: ${new Date(this.lastTradeExecutionTime).toLocaleString()}`);
             console.log(`⏳ Next trade allowed after: ${new Date(this.lastTradeExecutionTime + this.orderCooldownMs).toLocaleString()}\n`);
 
-            // Update opportunity status
+            // LOCK ENGINE: We now have open positions
+            this.hasActivePosition = true;
+
+            // Update status
             opportunity.status = 'executed';
 
-            // Persist execution result
+            // Persist
             await mongoService.storeOpportunity(opportunity);
 
-            // Phase 4: Register trade for monitoring
+            // Start Phase 4 monitoring
             if (this.tradeMonitor && !this.paperTradingMode) {
               await this.registerTradeForMonitoring(opportunity, executionResult);
             }
@@ -611,10 +636,7 @@ class ArbitrageEngine extends EventEmitter {
             console.error(`\n❌ PHASE 3: Execution failed at ${executionResult.stage}`);
             console.error(`   Reason: ${executionResult.reason || executionResult.error}`);
 
-            // Update opportunity status
             opportunity.status = 'execution_failed';
-
-            // Persist failed execution
             await mongoService.storeOpportunity(opportunity);
           }
         }
@@ -623,30 +645,26 @@ class ArbitrageEngine extends EventEmitter {
         console.error(error.stack);
         opportunity.status = 'execution_error';
       } finally {
-        // 🟢 RELEASE EXECUTION LOCK (always runs, even if error occurs)
+        // Always release execution lock
         this.isExecuting = false;
         console.log('🔓 Execution lock released - ready for next opportunity');
       }
     }
 
-    // console.log("opportunity phase 2", opportunity.phase2)
-
-    // Create trade decision
+    // Create final trade decision record
     const decision = {
       opportunityId,
       token: opportunity.token,
-      decision: this.phase3Enabled && !this.paperTradingMode ?
-        (executionResult?.success ? 'EXECUTED' : 'EXECUTION_FAILED') :
-        (this.phase2Enabled && opportunity.phase2 ?
-          (this.paperTradingMode ? 'PAPER_TRADE_APPROVED' : 'PROCEED_TO_PHASE_3') :
-          'PROCEED_TO_PHASE_2'),
-      reason: this.phase3Enabled && !this.paperTradingMode ?
-        (executionResult?.success ? 'Orders placed successfully on both exchanges' : executionResult?.reason || 'Execution failed') :
-        (
-          this.phase2Enabled && opportunity.phase2
-            ? `Phase-2 ready: position size $${opportunity.phase2.positionSize.positionSizeUSD.toFixed(2)} with ${opportunity.phase2.positionSize.leverage}x leverage`
-            : `Funding difference ${opportunity.fundingDiff.toFixed(4)}% exceeds ${opportunity.thresholdType} threshold ${opportunity.threshold}%`
-        ),
+      decision: this.phase3Enabled && !this.paperTradingMode
+        ? (executionResult?.success ? 'EXECUTED' : 'EXECUTION_FAILED')
+        : (this.phase2Enabled && opportunity.phase2
+          ? (this.paperTradingMode ? 'PAPER_TRADE_APPROVED' : 'PROCEED_TO_PHASE_3')
+          : 'PROCEED_TO_PHASE_2'),
+      reason: this.phase3Enabled && !this.paperTradingMode
+        ? (executionResult?.success ? 'Orders placed successfully on both exchanges' : executionResult?.reason || 'Execution failed')
+        : (this.phase2Enabled && opportunity.phase2
+          ? `Phase-2 ready: position size $${opportunity.phase2.positionSize.positionSizeUSD.toFixed(2)} with ${opportunity.phase2.positionSize.leverage}x leverage`
+          : `Funding difference ${opportunity.fundingDiff.toFixed(4)}% exceeds ${opportunity.thresholdType} threshold ${opportunity.threshold}%`),
       timestamp: Date.now(),
       opportunity,
       paperTrading: this.paperTradingMode,
@@ -659,7 +677,7 @@ class ArbitrageEngine extends EventEmitter {
     await redisService.storeTradeDecision(decision);
     await mongoService.storeTradeDecision(decision);
 
-    // Emit opportunity event
+    // Emit events
     this.emit('opportunity', opportunity);
     this.emit('decision', decision);
 
@@ -671,6 +689,13 @@ class ArbitrageEngine extends EventEmitter {
     }
 
     console.log('');
+
+    // Release execution lock if it wasn't released in Phase 3 finally block
+    // (e.g., if phase3 was disabled or paper trading mode was active)
+    if (this.isExecuting) {
+      this.isExecuting = false;
+      console.log('🔓 Execution lock released (end of handleOpportunity)');
+    }
   }
 
   /**
@@ -794,11 +819,11 @@ class ArbitrageEngine extends EventEmitter {
       const tradeData = {
         token: opportunity.token,
         deltaSymbol: opportunity.token,
-        pi42Symbol: opportunity.pi42Symbol,
+        coindcxSymbol: opportunity.binanceSymbol,
         deltaSide: executionResult.deltaOrder.side,
-        pi42Side: executionResult.pi42Order.side,
+        coindcxSide: executionResult.coindcxOrder.side,
         deltaOrderId: executionResult.deltaOrder.orderId,
-        pi42OrderId: executionResult.pi42Order.orderId,
+        coindcxOrderId: executionResult.coindcxOrder.orderId,
         entryTime: Date.now(),
         fundingDiff: opportunity.fundingDiff,
         nextFundingTime: opportunity.FT_pi42
@@ -813,6 +838,15 @@ class ArbitrageEngine extends EventEmitter {
     } catch (error) {
       console.error('❌ Failed to register trade for monitoring:', error.message);
     }
+  }
+
+  resetPositionLock() {
+    this.hasActivePosition = false;
+    this.activeTrade = null;
+    if (this.tradeMonitor) {
+      this.tradeMonitor.unregisterTrade();
+    }
+    console.log('\nPOSITION FULLY CLOSED → Engine unlocked for new opportunities');
   }
 
   /**
@@ -894,6 +928,8 @@ class ArbitrageEngine extends EventEmitter {
 
       // Log results
       if (exitResult.success) {
+
+        this.resetPositionLock();
         console.log('\n✅ EMERGENCY EXIT COMPLETED SUCCESSFULLY');
         console.log(`   Delta Order ID: ${exitResult.deltaExit.orderId}`);
         console.log(`   Coindcx Order ID: ${exitResult.coindcxExit.orderId}`);
@@ -946,14 +982,14 @@ class ArbitrageEngine extends EventEmitter {
       console.log(`\nStep 4: Fetching Coindcx orderbook...`);
       // const convertedSymbol = `B-${opportunity.binanceSymbol.replace(/(USDT)$/, "_$1")}`;
       // console.log("converted symbol", convertedSymbol)
-      const coindcxOrderbookRaw = await coindcxAPI.getOrderbook(exitData.details.coindcxPosition.coindcxSymbol, this.orderbookDepth);
+      const coindcxOrderbookRaw = await coindcxAPI.getOrderbook(exitData.details.coindcxPosition.pair, this.orderbookDepth);
 
       console.log("refwewefwef", coindcxOrderbookRaw)
       const coindcxOrderbook = positionSizer.normalizeOrderbook(coindcxOrderbookRaw, 'coindcx');
 
       console.log("erfewrwefwe", coindcxOrderbook)
       const coindcxSide = exitData.details.coindcxPosition.positionType === 'SHORT' ? 'buy' : 'sell';
-      const coindcxTPResult = positionSizer.calculateTradingPriceFromOrderbook(coindcxOrderbook, coindcxSide, exitData.details.pi42Position.quantity);
+      const coindcxTPResult = positionSizer.calculateTradingPriceFromOrderbook(coindcxOrderbook, coindcxSide, exitData.details.coindcxPosition.size);
       console.log("coinDedrfwae", coindcxTPResult)
 
 
@@ -988,6 +1024,7 @@ class ArbitrageEngine extends EventEmitter {
 
       // Log results
       if (exitResult.success) {
+        this.resetPositionLock();
         console.log('\n✅ NORMAL EXIT COMPLETED SUCCESSFULLY');
         console.log(`   Exit Type: ${exitResult.type}`);
         console.log(`   Delta Order ID: ${exitResult.deltaExit.orderId}`);
@@ -1025,7 +1062,7 @@ class ArbitrageEngine extends EventEmitter {
 
     // Disconnect exchanges
     this.deltaExchange.disconnect();
-    this.pi42Exchange.disconnect();
+    this.coindcxExchange.disconnect();
 
     // Disconnect services
     await redisService.disconnect();

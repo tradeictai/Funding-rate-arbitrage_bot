@@ -28,7 +28,7 @@ class TradeMonitor extends EventEmitter {
     this.latestCoindcxPosition = null;
 
     this.quantityTolerance = config.trading.quantityTolerance || 0.05; // 5%
-    this.minProfitThreshold = config.trading.minProfitThreshold || 0.01; // e.g. 0.01%
+    this.minProfitThreshold = config.trading.minProfitThreshold || 0.001; // e.g. 0.01%
 
     this.flipCheckTimer = null;
 
@@ -298,7 +298,7 @@ class TradeMonitor extends EventEmitter {
   registerTrade(trade) {
     console.log('\n📝 TRADE REGISTERED FOR MONITORING');
     console.log('='.repeat(60));
-    console.log(`Delta: ${trade.deltaSymbol} | Pi42: ${trade.coindexSymbol}`);
+    console.log(`Delta: ${trade.deltaSymbol} | Coindcx: ${trade.coindexSymbol}`);
     console.log('='.repeat(60));
 
     this.activeTrade = {

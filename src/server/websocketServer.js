@@ -58,7 +58,7 @@ class WebSocketServer {
     });
 
     // Pi42 Exchange funding rates
-    this.engine.pi42Exchange.on('update', (data) => {
+    this.engine.coindcxExchange.on('update', (data) => {
       // console.log('📡 Dashboard: Pi42 funding rate update ->', data);
       this.io.emit('fundingRate:pi42', {
         symbol: data.symbol,
@@ -97,6 +97,8 @@ class WebSocketServer {
     // ==========================================
 
     this.engine.on('decision', (decision) => {
+
+      console.log("Deceiwesion", decision)
       if (decision.decision === 'EXECUTED' && decision.executionResult?.success) {
         console.log('✅ Dashboard: Order executed ->', decision.opportunity.token);
 
@@ -106,11 +108,11 @@ class WebSocketServer {
         this.io.emit('order:executed', {
           token: opp.token,
           deltaSymbol: opp.token,
-          pi42Symbol: opp.pi42Symbol,
+          coindcxSymbol: opp.coindcxSymbol,
           deltaSide: exec.deltaOrder.side,
-          pi42Side: exec.pi42Order.side,
+          coindcxSide: exec.coindcxOrder.side,
           deltaOrderId: exec.deltaOrder.orderId,
-          pi42OrderId: exec.pi42Order.orderId,
+          coindcxOrderId: exec.coindcxOrder.orderId,
           entryTime: Date.now(),
           fundingDiff: opp.fundingDiff,
           nextFundingTime: opp.FT_pi42
