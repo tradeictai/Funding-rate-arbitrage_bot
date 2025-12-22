@@ -28,7 +28,7 @@ class TradeMonitor extends EventEmitter {
     this.latestCoindcxPosition = null;
 
     this.quantityTolerance = config.trading.quantityTolerance || 0.05; // 5%
-    this.minProfitThreshold = config.trading.minProfitThreshold || 0.001; // e.g. 0.01%
+    this.minProfitThreshold = config.trading.minProfitThreshold || 0.01; // e.g. 0.01%
 
     this.flipCheckTimer = null;
 
@@ -114,7 +114,7 @@ class TradeMonitor extends EventEmitter {
     console.log('\n🔍 QUANTITY CHECK');
     console.log('='.repeat(60));
     console.log(`Delta: ${deltaQuantity.toFixed(4)} (${deltaSize} × ${deltaContractValue})`);
-    console.log(`Pi42:  ${coindcxQuantity.toFixed(4)}`);
+    console.log(`Coindcx:  ${coindcxQuantity.toFixed(4)}`);
 
     const maxQty = Math.max(deltaQuantity, coindcxQuantity);
     const qtyDiff = Math.abs(deltaQuantity - coindcxQuantity);
@@ -157,7 +157,7 @@ class TradeMonitor extends EventEmitter {
     if (!deltaFRData || !coindcxFRData) {
       console.log('⏳ Waiting for both funding rates...');
       console.log(`   Delta symbol: ${deltaSymbol} - FR: ${deltaFRData ? 'Found' : 'NOT FOUND'}`);
-      console.log(`   Pi42 symbol: ${coindcxSymbol} - FR: ${coindcxFRData ? 'Found' : 'NOT FOUND'}`);
+      console.log(`   Coindcx symbol: ${coindcxSymbol} - FR: ${coindcxFRData ? 'Found' : 'NOT FOUND'}`);
       return;
     }
 

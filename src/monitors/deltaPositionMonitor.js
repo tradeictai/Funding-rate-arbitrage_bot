@@ -330,6 +330,10 @@ class DeltaPositionMonitor extends EventEmitter {
           payload: { channels: [{ name: 'v2/ticker', symbols: ['all'] }] }
         }));
         console.log('📡 Subscribed to v2/ticker for funding rates\n');
+        // setTimeout(async () => {
+        //   console.log('🔄 Fetching initial positions via REST API for reliable sync...');
+        //   await this.refreshPositions({product_id: 0}, 3, 3000);
+        // }, 3000);
       } else {
         console.error('❌ AUTHENTICATION FAILED!');
         console.error('Details:', msg);
@@ -386,7 +390,7 @@ class DeltaPositionMonitor extends EventEmitter {
       );
 
       if (hasPosition) {
-        console.log(`💰 Delta Funding | ${symbol}: ${(rate ).toFixed(4)}% | Next: ${this.formatTimeRemaining(nextFundingTime - Date.now())}`);
+        console.log(`💰 Delta Funding | ${symbol}: ${(rate).toFixed(4)}% | Next: ${this.formatTimeRemaining(nextFundingTime - Date.now())}`);
       }
 
       this.emit('funding_rate', { symbol, fundingRate: rate, nextFundingTime });
@@ -450,10 +454,104 @@ class DeltaPositionMonitor extends EventEmitter {
   getPositions() { return Array.from(this.normalizedCache.values()); }
   getPositionBySymbol(symbol) { return this.getPositions().find(p => p.product_symbol === symbol); }
 
+  /**
+   * Refresh positions via REST API (call after order execution)
+   * This ensures we have the latest position data when WebSocket updates are delayed
+   * @param {number} maxRetries - Maximum number of retry attempts
+   * @param {number} retryDelay - Delay between retries in milliseconds
+   */
+  async refreshPositions(data, maxRetries = 3, retryDelay = 3000) {
+
+    console.log('🔄 Forcing WebSocket re-authentication and full sync...\n');
+
+    // Step 1: Close current connection if open
+    if (this.ws) {
+      console.log('   Closing existing WebSocket...');
+      this.ws.close();
+      this.ws = null;
+    }
+
+    this.isConnected = false;
+    this.isAuthenticated = false;
+    this.positions.clear();
+    this.normalizedCache.clear();
+    this.fundingRates.clear();
+    this.messageCount = 0;
+    this.lastUpdateReceived = null;
+
+    // Step 2: Reconnect and force re-authentication
+    console.log('   Reconnecting WebSocket...');
+    this.connect();
+
+    try {
+    const { default: deltaAPI } = await import('../services/deltaAPI.js');
+    const restPositions = await deltaAPI.getPositions(data.product_id);
+    console.log(`   REST fallback: ${restPositions?.length || 0} positions found`);
+  } catch (error) {
+    console.warn('   REST fallback failed (expected if rate-limited):', error.message);
+  }
+
+  console.log('✅ WebSocket re-authentication initiated\n');
+
+    // Import deltaAPI dynamically to avoid circular dependency
+    // const { default: deltaAPI } = await import('../services/deltaAPI.js');
+
+    // for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    //   try {
+    //     console.log(`🔄 [Attempt ${attempt}/${maxRetries}] Refreshing Delta positions via REST API...`);
+
+    //     const positions = await deltaAPI.getPositions(data.product_id);
+
+    //     if (!positions || positions.length === 0) {
+    //       console.log(`   No positions found via REST API (attempt ${attempt}/${maxRetries})`);
+
+    //       // If this is not the last attempt, wait and retry
+    //       if (attempt < maxRetries) {
+    //         console.log(`   Retrying in ${retryDelay / 1000} seconds...\n`);
+    //         await new Promise(resolve => setTimeout(resolve, retryDelay));
+    //         continue;
+    //       } else {
+    //         console.log('   ⚠️ No positions found after all retry attempts\n');
+    //         return;
+    //       }
+    //     }
+
+    //     // Success - positions found!
+    //     console.log(`   ✅ Found ${positions.length} position(s) via REST API\n`);
+
+    //     positions.forEach(pos => {
+    //       pos.product_symbol = pos.product_symbol || pos.symbol;
+    //       const normalized = this.normalizePosition(pos);
+
+    //       console.log(`   📍 Refreshed Position: ${normalized.product_symbol}`);
+    //       this.printCompactLiveUpdate(normalized);
+
+    //       this.positions.set(pos.product_id, pos);
+    //       this.normalizedCache.set(pos.product_id, normalized);
+    //       this.emit('position', { exchange: 'delta', type: 'refresh', position: normalized });
+    //     });
+
+    //     console.log('✅ Delta positions refreshed successfully\n');
+    //     return; // Success - exit retry loop
+
+    //   } catch (error) {
+    //     console.error(`❌ Error refreshing Delta positions (attempt ${attempt}/${maxRetries}):`, error.message);
+
+    //     // If this is not the last attempt, wait and retry
+    //     if (attempt < maxRetries) {
+    //       console.log(`   Retrying in ${retryDelay / 1000} seconds...\n`);
+    //       await new Promise(resolve => setTimeout(resolve, retryDelay));
+    //     } else {
+    //       console.error('❌ Failed to refresh positions after all retry attempts\n');
+    //     }
+    //   }
+    // }
+  }
+
   getFundingRate(symbol) {
     // Try exact match first
     let result = this.fundingRates.get(symbol);
-    
+
     // If not found, try case-insensitive match
     if (!result) {
       const upperSymbol = symbol?.toUpperCase();

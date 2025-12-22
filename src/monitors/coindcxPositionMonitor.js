@@ -314,6 +314,79 @@ class CoinDCXPositionMonitor extends EventEmitter {
     return Object.fromEntries(this.fundingRates);
   }
 
+  /**
+   * Refresh positions via REST API (call after order execution)
+   * This ensures we have the latest position data when WebSocket updates are delayed
+   * @param {number} maxRetries - Maximum number of retry attempts
+   * @param {number} retryDelay - Delay between retries in milliseconds
+   */
+  async refreshPositions(maxRetries = 3, retryDelay = 3000) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 [Attempt ${attempt}/${maxRetries}] Refreshing CoinDCX positions via REST API...`);
+
+        const positions = await coindcxAPI.getPositions();
+
+        if (!positions || positions.length === 0) {
+          console.log(`   No positions found via REST API (attempt ${attempt}/${maxRetries})`);
+
+          // If this is not the last attempt, wait and retry
+          if (attempt < maxRetries) {
+            console.log(`   Retrying in ${retryDelay/1000} seconds...\n`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            continue;
+          } else {
+            console.log('   ⚠️ No positions found after all retry attempts\n');
+            return;
+          }
+        }
+
+        // Success - positions found!
+        console.log(`   ✅ Found ${positions.length} position(s) via REST API\n`);
+
+        // Process each position
+        positions.forEach(pos => {
+          const symbol = pos.pair?.toUpperCase();
+          if (!symbol) return;
+
+          const activePos = parseFloat(pos.active_pos || 0);
+          if (activePos === 0) return; // Skip flat positions
+
+          const side = activePos > 0 ? 'LONG' : 'SHORT';
+          const size = Math.abs(activePos);
+
+          console.log(`   📍 Refreshed Position: ${symbol} ${side} | Size: ${size}`);
+
+          // Store position
+          this.positions.set(symbol, { ...pos, symbol, side, size, positionAmount: activePos });
+          this.lastUpdate = Date.now();
+
+          // Emit position event
+          this.emit('position', {
+            exchange: 'coindcx',
+            type: 'refresh',
+            position: { ...pos, symbol, side, size, positionAmount: activePos },
+            previous: null
+          });
+        });
+
+        console.log('✅ CoinDCX positions refreshed successfully\n');
+        return; // Success - exit retry loop
+
+      } catch (error) {
+        console.error(`❌ Error refreshing CoinDCX positions (attempt ${attempt}/${maxRetries}):`, error.message);
+
+        // If this is not the last attempt, wait and retry
+        if (attempt < maxRetries) {
+          console.log(`   Retrying in ${retryDelay/1000} seconds...\n`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        } else {
+          console.error('❌ Failed to refresh positions after all retry attempts\n');
+        }
+      }
+    }
+  }
+
   // --- Start Everything ---
   async connect() {
     console.log('🚀 Starting CoinDCX Position + Binance Funding Monitor');

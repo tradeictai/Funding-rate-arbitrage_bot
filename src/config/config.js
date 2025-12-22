@@ -57,8 +57,8 @@ const config = {
     entryTimeoutSeconds: parseInt(process.env.ENTRY_TIMEOUT_SECONDS) || 30,
     pollIntervalSeconds: parseInt(process.env.POLL_INTERVAL_SECONDS) || 5,
     maxWaitForFundingSeconds: parseInt(process.env.MAX_WAIT_FOR_FUNDING_SECONDS) || 300,
-    preFundingWindowMinutes: parseInt(process.env.PRE_FUNDING_WINDOW_MINUTES)  || 59,
-    maxQueuedOpps: parseInt(process.env.MAX_QUEUED_OPPS)  || 15,
+    preFundingWindowMinutes: parseInt(process.env.PRE_FUNDING_WINDOW_MINUTES)  || 5,  // 5min
+    maxQueuedOpps: parseInt(process.env.MAX_QUEUED_OPPS)  || 15, 
     // Phase 2: Position Sizing
     maxPositionSizeUSD: parseFloat(process.env.MAX_POSITION_SIZE_USD) || 1000,
     minPositionSizeUSD: parseFloat(process.env.MIN_POSITION_SIZE_USD) || 0.5,

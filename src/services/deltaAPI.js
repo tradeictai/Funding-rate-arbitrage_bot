@@ -8,8 +8,8 @@ import config from '../config/config.js';
 class DeltaAPI {
   constructor() {
     this.baseUrl = 'https://api.india.delta.exchange';
-    this.apiKey = config.exchanges.delta.apiKey;
-    this.apiSecret = config.exchanges.delta.apiSecret;
+    this.apiKey = config.orderPlace.delta.apiKey;
+    this.apiSecret = config.orderPlace.delta.apiSecret;
 
     this.apiKeyTrade = config.orderPlace.delta.apiKey;
     this.apiSecretTrade = config.orderPlace.delta.apiSecret;
@@ -230,10 +230,20 @@ class DeltaAPI {
   /**
    * Get current positions
    */
-  async getPositions() {
-    const data = await this.request('GET', '/v2/positions');
-    return data.result || [];
+  async getPositions(productId) {
+  try {
+    const response = await this.request('GET', `/v2/positions?product_id=${productId}`);  // <-- Changed endpoint
+    // Response format: { success: true, result: [array of positions] }
+    if (response.success) {
+      return response.result || [];
+    } else {
+      throw new Error(response.message || 'Failed to fetch positions');
+    }
+  } catch (error) {
+    console.error('Delta API getPositions error:', error.message);
+    throw error;
   }
+}
 
   /**
    * Get position for specific symbol

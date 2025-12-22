@@ -59,8 +59,8 @@ class WebSocketServer {
 
     // Pi42 Exchange funding rates
     this.engine.coindcxExchange.on('update', (data) => {
-      // console.log('📡 Dashboard: Pi42 funding rate update ->', data);
-      this.io.emit('fundingRate:pi42', {
+      // console.log('📡 Dashboard: Coindcx funding rate update ->', data);
+      this.io.emit('fundingRate:coindcx', {
         symbol: data.symbol,
         fundingRate: data.fundingRate,
         markPrice: data.markPrice,
@@ -98,7 +98,7 @@ class WebSocketServer {
 
     this.engine.on('decision', (decision) => {
 
-      console.log("Deceiwesion", decision)
+      // console.log("Deceiwesion", decision)
       if (decision.decision === 'EXECUTED' && decision.executionResult?.success) {
         console.log('✅ Dashboard: Order executed ->', decision.opportunity.token);
 
@@ -178,10 +178,10 @@ class WebSocketServer {
 
         this.io.emit('alert:quantityMismatch', {
           timestamp: Date.now(),
-          reason: `Quantity mismatch: Delta ${data.deltaQty?.toFixed(4)} vs Pi42 ${data.pi42Qty?.toFixed(4)}`,
+          reason: `Quantity mismatch: Delta ${data.deltaQty?.toFixed(4)} vs Coindcx ${data.coindcxQty?.toFixed(4)}`,
           details: {
             deltaQuantity: data.deltaQty,
-            pi42Quantity: data.pi42Qty,
+            coindcxQuantity: data.coindcxQty,
             qtyDiffPct: data.differencePct
           }
         });
@@ -201,7 +201,7 @@ class WebSocketServer {
             currentDiff: data.diff,
             threshold: data.threshold,
             deltaFR: data.FR_delta,
-            pi42FR: data.FR_pi42
+            coindcxFR: data.FR_coindcx
           }
         });
       });

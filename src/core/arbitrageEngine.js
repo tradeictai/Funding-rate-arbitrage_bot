@@ -51,8 +51,8 @@ class ArbitrageEngine extends EventEmitter {
     this.preFundingWindowMs = this.preFundingWindowMinutes * 60 * 1000;
     this.orderCooldownMs = config.trading.orderCooldownMinutes * 60 * 1000;
     this.paperTradingMode = config.trading.paperTradingMode;
-    this.phase2Enabled = config.trading.phase2Enabled || false;
-    this.phase3Enabled = config.trading.phase3Enabled || false;
+    this.phase2Enabled = config.trading.phase2Enabled || true;
+    this.phase3Enabled = config.trading.phase3Enabled || true;
 
 
 
@@ -834,6 +834,24 @@ class ArbitrageEngine extends EventEmitter {
       this.activeTrade = tradeData;
 
       console.log('✅ Trade monitoring activated');
+
+      // CRITICAL FIX: Refresh positions via REST API to ensure monitors have latest data
+      // WebSocket updates may be delayed after order execution
+      console.log('\n🔄 Refreshing position data from both exchanges...');
+      console.log('   (Waiting 5 seconds for exchange APIs to process orders)\n');
+
+      await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second initial delay
+
+      // Refresh positions on both monitors with retry logic (3 attempts, 3 seconds between attempts)
+      if (this.tradeMonitor.deltaMonitor && this.tradeMonitor.deltaMonitor.refreshPositions) {
+        await this.tradeMonitor.deltaMonitor.refreshPositions(executionResult.deltaOrder);
+      }
+
+      if (this.tradeMonitor.coindcxMonitor && this.tradeMonitor.coindcxMonitor.refreshPositions) {
+        await this.tradeMonitor.coindcxMonitor.refreshPositions();
+      }
+
+      console.log('✅ Position refresh complete - monitors are now tracking active positions\n');
 
     } catch (error) {
       console.error('❌ Failed to register trade for monitoring:', error.message);
