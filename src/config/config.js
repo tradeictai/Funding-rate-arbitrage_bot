@@ -49,8 +49,8 @@ const config = {
   trading: {
     leverage: parseInt(process.env.LEVERAGE) || 10,
     useFundPct: parseFloat(process.env.USE_FUND_PCT) || 0.15,
-    primaryThreshold: parseFloat(process.env.PRIMARY_THRESHOLD) || 0.15, // 0.1%
-    secondaryThreshold: parseFloat(process.env.SECONDARY_THRESHOLD) || 0.15, // 0.1%
+    primaryThreshold: parseFloat(process.env.PRIMARY_THRESHOLD) || 0.1, // 0.1%
+    secondaryThreshold: parseFloat(process.env.SECONDARY_THRESHOLD) || 0.1, // 0.1%
     fundingTimeWindowSeconds:
       parseInt(process.env.FUNDING_TIME_WINDOW_SECONDS) || 60,
     minFillPct: parseFloat(process.env.MIN_FILL_PCT) || 0.95,

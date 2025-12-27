@@ -193,9 +193,9 @@ class ArbitrageEngine extends EventEmitter {
     await redisService.storeFundingData('delta', data.symbol, data);
 
     // Periodically persist to MongoDB (every 10th update to reduce load)
-    if (Math.random() < 0.1) {
-      await mongoService.storeFundingRate('delta', data.symbol, data);
-    }
+    // if (Math.random() < 0.1) {
+    //   await mongoService.storeFundingRate('delta', data.symbol, data);
+    // }
   }
 
   /**

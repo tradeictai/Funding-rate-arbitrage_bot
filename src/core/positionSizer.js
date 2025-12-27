@@ -178,7 +178,7 @@ class PositionSizer {
     const balances = await this.getBalances();
 
     console.log(`Delta Balance:   $${balances.delta.toFixed(2)} USDT`);
-    console.log(`Pi42 Balance:    $${balances.coindcx.toFixed(2)} USDT`);
+    console.log(`Coindcx Balance:    $${balances.coindcx.toFixed(2)} USDT`);
 
     // Find the minimum balance (limiting factor)
     const minBalance = Math.min(balances.delta, balances.coindcx);

@@ -72,35 +72,57 @@ class CoinDCXPositionMonitor extends EventEmitter {
       }
 
       // Process each existing position
-      positions.forEach(pos => {
+      for (const pos of positions) {
         const symbol = pos.pair?.toUpperCase();
-        if (!symbol) return;
+        if (!symbol) continue;
 
         const activePos = parseFloat(pos.active_pos || 0);
-        if (activePos === 0) return; // Skip flat positions
+        if (activePos === 0) continue; // Skip flat positions
 
         const side = activePos > 0 ? 'LONG' : 'SHORT';
         const size = Math.abs(activePos);
+
+        // Get unrealized PnL
+        let unrealizedPnl = parseFloat(pos.unrealised_pnl || pos.unrealisedPnl || pos.pnl || 0);
+
+        // If REST API doesn't provide unrealized PnL, calculate it
+        if (!pos.unrealised_pnl && !pos.unrealisedPnl && !pos.pnl) {
+          console.log(`   ⚠️ REST API missing unrealized PnL, calculating manually...`);
+          unrealizedPnl = await this.calculateUnrealizedPnL(pos);
+        }
 
         // Convert to Binance symbol for debugging
         const binanceSymbol = this.coindcxToBinance(symbol);
         console.log(`\n${side === 'LONG' ? '🟢' : '🔴'} [${new Date().toLocaleTimeString()}] ${symbol} ${side}`);
         console.log(`   Size: ${size} | Avg Price: ${parseFloat(pos.avg_price || 0).toFixed(6)}`);
         console.log(`   Leverage: ${pos.leverage}x | Margin: ${pos.margin_type}`);
+        console.log(`   💰 Unrealized PnL: $${unrealizedPnl.toFixed(4)}`);
         console.log(`   Binance Symbol: ${binanceSymbol} (for funding rate)`);
 
+        // Enhanced position object with unrealized PnL
+        const enhancedPosition = {
+          ...pos,
+          symbol,
+          side,
+          size,
+          positionAmount: activePos,
+          unrealised_pnl: unrealizedPnl,
+          unrealisedPnl: unrealizedPnl,
+          pnl: unrealizedPnl
+        };
+
         // Store position
-        this.positions.set(symbol, { ...pos, symbol, side, size, positionAmount: activePos });
+        this.positions.set(symbol, enhancedPosition);
         this.lastUpdate = Date.now();
 
         // Emit position event
         this.emit('position', {
           exchange: 'coindcx',
           type: 'snapshot',
-          position: { ...pos, symbol, side, size, positionAmount: activePos },
+          position: enhancedPosition,
           previous: null
         });
-      });
+      }
 
       console.log('');
     } catch (error) {
@@ -134,71 +156,114 @@ class CoinDCXPositionMonitor extends EventEmitter {
 
     // POSITION UPDATES (Real-time via WebSocket)
     // Per CoinDCX docs: response.data contains array of position objects
-    this.coindcxSocket.on('df-position-update', (response) => {
-      try {
-        this.messageCount++;
+    // Trying multiple event names to find the correct one
+    const positionEventNames = [
+      'df-user-cross-position-details',  // Cross margin positions
+      'df-position-update',               // General position update
+      'df-user-isolated-position-details', // Isolated margin positions
+      'position-update',
+      'user-position-update'
+    ];
 
-        console.log('\n🔄 Position Update Received');
-        console.log('Response:', JSON.stringify(response, null, 2));
+    positionEventNames.forEach(eventName => {
+      this.coindcxSocket.on(eventName, async (response) => {
+        try {
+          this.messageCount++;
 
-        // Extract position data (docs show response.data is the array)
-        const positions = Array.isArray(response.data) ? response.data :
-                         (response.data ? [response.data] : []);
+          console.log(`\n🔄 Position Update Received from event: "${eventName}"`);
+          console.log('Response:', JSON.stringify(response, null, 2));
+          console.log('📋 DEBUG: Full WebSocket position data fields:', response.data ? Object.keys(response.data[0] || {}) : 'No data');
 
-        if (positions.length === 0) {
-          console.log('⚠️ Empty position update\n');
-          return;
+          // Extract position data (docs show response.data is the array)
+          const positions = Array.isArray(response.data) ? response.data :
+                           (response.data ? [response.data] : []);
+
+          console.log("CoinDCX position ke andar:", positions)
+
+          if (positions.length === 0) {
+            console.log('⚠️ Empty position update\n');
+            return;
+          }
+
+          // Process each position with unrealized PnL
+          for (const pos of positions) {
+            const symbol = pos.pair?.toUpperCase();
+            if (!symbol) continue;
+
+            const activePos = parseFloat(pos.active_pos || 0);
+            const side = activePos > 0 ? 'LONG' : activePos < 0 ? 'SHORT' : 'FLAT';
+            const size = Math.abs(activePos);
+            const prev = this.positions.get(symbol);
+
+            // Calculate unrealized PnL if not provided
+            let unrealizedPnl = parseFloat(pos.unrealised_pnl || pos.unrealisedPnl || pos.pnl || 0);
+
+            // If WebSocket doesn't provide unrealized PnL, calculate it manually
+            if (!pos.unrealised_pnl && !pos.unrealisedPnl && !pos.pnl) {
+              console.log(`⚠️ WebSocket data missing unrealized PnL, calculating manually...`);
+              unrealizedPnl = await this.calculateUnrealizedPnL(pos);
+            }
+
+            console.log(`\n${side === 'LONG' ? '🟢' : side === 'SHORT' ? '🔴' : '⚪'} [${new Date().toLocaleTimeString()}] ${symbol} ${side}`);
+            console.log(`   Size: ${size} | Avg Price: ${parseFloat(pos.avg_price || 0).toFixed(6)}`);
+            console.log(`   Leverage: ${pos.leverage}x | Liquidation: ${parseFloat(pos.liquidation_price || 0).toFixed(6)}`);
+            console.log(`   💰 Unrealized PnL: $${unrealizedPnl.toFixed(4)}`);
+
+            const frData = this.fundingRates.get(symbol);
+            if (frData) {
+              console.log(`   Funding Rate: ${frData.rate.toFixed(4)}% → ${this.formatTimeRemaining(frData.timeRemaining)}`);
+            }
+
+            // Enhanced position object with unrealized PnL
+            const enhancedPosition = {
+              ...pos,
+              symbol,
+              side,
+              size,
+              positionAmount: activePos,
+              unrealised_pnl: unrealizedPnl,
+              unrealisedPnl: unrealizedPnl,  // Duplicate for compatibility
+              pnl: unrealizedPnl
+            };
+
+            // Update position
+            if (activePos === 0) {
+              // Position closed
+              this.positions.delete(symbol);
+              console.log('   ✅ Position CLOSED');
+            } else {
+              // Position updated
+              this.positions.set(symbol, enhancedPosition);
+            }
+
+            this.lastUpdate = Date.now();
+
+            this.emit('position', {
+              exchange: 'coindcx',
+              type: prev ? 'update' : 'new',
+              position: enhancedPosition,
+              previous: prev
+            });
+          }
+
+          console.log('');
+        } catch (error) {
+          console.error('❌ Error processing position update:', error.message);
+          console.error('Stack:', error.stack);
         }
-
-        positions.forEach(pos => {
-          const symbol = pos.pair?.toUpperCase();
-          if (!symbol) return;
-
-          const activePos = parseFloat(pos.active_pos || 0);
-          const side = activePos > 0 ? 'LONG' : activePos < 0 ? 'SHORT' : 'FLAT';
-          const size = Math.abs(activePos);
-          const prev = this.positions.get(symbol);
-
-          console.log(`\n${side === 'LONG' ? '🟢' : side === 'SHORT' ? '🔴' : '⚪'} [${new Date().toLocaleTimeString()}] ${symbol} ${side}`);
-          console.log(`   Size: ${size} | Avg Price: ${parseFloat(pos.avg_price || 0).toFixed(6)}`);
-          console.log(`   Leverage: ${pos.leverage}x | Liquidation: ${parseFloat(pos.liquidation_price || 0).toFixed(6)}`);
-
-          const frData = this.fundingRates.get(symbol);
-          if (frData) {
-            console.log(`   Funding Rate: ${frData.rate.toFixed(4)}% → ${this.formatTimeRemaining(frData.timeRemaining)}`);
-          }
-
-          // Update position
-          if (activePos === 0) {
-            // Position closed
-            this.positions.delete(symbol);
-            console.log('   ✅ Position CLOSED');
-          } else {
-            // Position updated
-            this.positions.set(symbol, { ...pos, symbol, side, size, positionAmount: activePos });
-          }
-
-          this.lastUpdate = Date.now();
-
-          this.emit('position', {
-            exchange: 'coindcx',
-            type: prev ? 'update' : 'new',
-            position: { ...pos, symbol, side, size, positionAmount: activePos },
-            previous: prev
-          });
-        });
-
-        console.log('');
-      } catch (error) {
-        console.error('❌ Error processing position update:', error.message);
-      }
+      });
     });
 
-    // Debug: Log other events (comment out in production)
+    // Debug: Log ALL events to find the correct position update event
     this.coindcxSocket.onAny((eventName, ...args) => {
-      // Only log non-position events for debugging
-      if (!eventName.includes('position') && !eventName.includes('cross')) {
-        console.log(`📡 CoinDCX Event: "${eventName}"`);
+      console.log(`📡 CoinDCX Event: "${eventName}"`);
+
+      // If it's a potential position event, log the full data
+      if (eventName.includes('position') ||
+          eventName.includes('cross') ||
+          eventName.includes('isolated') ||
+          eventName.includes('user')) {
+        console.log(`   └─ Data:`, JSON.stringify(args[0], null, 2).substring(0, 500));
       }
     });
 
@@ -276,6 +341,8 @@ class CoinDCXPositionMonitor extends EventEmitter {
         status += ` | Last Update: ${ago}s ago`;
       }
 
+      console.log( "wetw", this.positions)
+
       status += `\n   📊 Open Positions: ${this.positions.size}`;
       if (this.positions.size === 0) {
         status += '\n   No active positions';
@@ -315,6 +382,52 @@ class CoinDCXPositionMonitor extends EventEmitter {
   }
 
   /**
+   * Calculate unrealized PnL for a position
+   * Fetches current mark price from Binance and calculates PnL
+   * @param {Object} position - Position object from CoinDCX
+   * @returns {Promise<number>} - Unrealized PnL in USDT
+   */
+  async calculateUnrealizedPnL(position) {
+    try {
+      const symbol = position.pair?.toUpperCase();
+      if (!symbol) return 0;
+
+      const binanceSymbol = this.coindcxToBinance(symbol);
+
+      // Get mark price from Binance
+      const response = await fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${binanceSymbol}`);
+      const data = await response.json();
+
+      if (!data || !data.markPrice) {
+        console.log(`   ⚠️ Could not fetch mark price for ${binanceSymbol}`);
+        return 0;
+      }
+
+      const markPrice = parseFloat(data.markPrice);
+      const avgPrice = parseFloat(position.avg_price || 0);
+      const activePos = parseFloat(position.active_pos || 0);
+      const size = Math.abs(activePos);
+
+      // Calculate PnL based on position side
+      let pnl = 0;
+      if (activePos > 0) {
+        // LONG position: PnL = (Mark Price - Entry Price) * Size
+        pnl = (markPrice - avgPrice) * size;
+      } else if (activePos < 0) {
+        // SHORT position: PnL = (Entry Price - Mark Price) * Size
+        pnl = (avgPrice - markPrice) * size;
+      }
+
+      console.log(`   💰 Calculated PnL: $${pnl.toFixed(4)} (Mark: ${markPrice}, Entry: ${avgPrice}, Size: ${size})`);
+
+      return Number(pnl.toFixed(4));
+    } catch (error) {
+      console.error(`   ❌ Error calculating unrealized PnL:`, error.message);
+      return 0;
+    }
+  }
+
+  /**
    * Refresh positions via REST API (call after order execution)
    * This ensures we have the latest position data when WebSocket updates are delayed
    * @param {number} maxRetries - Maximum number of retry attempts
@@ -345,30 +458,50 @@ class CoinDCXPositionMonitor extends EventEmitter {
         console.log(`   ✅ Found ${positions.length} position(s) via REST API\n`);
 
         // Process each position
-        positions.forEach(pos => {
+        for (const pos of positions) {
           const symbol = pos.pair?.toUpperCase();
-          if (!symbol) return;
+          if (!symbol) continue;
 
           const activePos = parseFloat(pos.active_pos || 0);
-          if (activePos === 0) return; // Skip flat positions
+          if (activePos === 0) continue; // Skip flat positions
 
           const side = activePos > 0 ? 'LONG' : 'SHORT';
           const size = Math.abs(activePos);
 
-          console.log(`   📍 Refreshed Position: ${symbol} ${side} | Size: ${size}`);
+          // Get unrealized PnL
+          let unrealizedPnl = parseFloat(pos.unrealised_pnl || pos.unrealisedPnl || pos.pnl || 0);
+
+          // If REST API doesn't provide unrealized PnL, calculate it
+          if (!pos.unrealised_pnl && !pos.unrealisedPnl && !pos.pnl) {
+            unrealizedPnl = await this.calculateUnrealizedPnL(pos);
+          }
+
+          console.log(`   📍 Refreshed Position: ${symbol} ${side} | Size: ${size} | PnL: $${unrealizedPnl.toFixed(4)}`);
+
+          // Enhanced position object with unrealized PnL
+          const enhancedPosition = {
+            ...pos,
+            symbol,
+            side,
+            size,
+            positionAmount: activePos,
+            unrealised_pnl: unrealizedPnl,
+            unrealisedPnl: unrealizedPnl,
+            pnl: unrealizedPnl
+          };
 
           // Store position
-          this.positions.set(symbol, { ...pos, symbol, side, size, positionAmount: activePos });
+          this.positions.set(symbol, enhancedPosition);
           this.lastUpdate = Date.now();
 
           // Emit position event
           this.emit('position', {
             exchange: 'coindcx',
             type: 'refresh',
-            position: { ...pos, symbol, side, size, positionAmount: activePos },
+            position: enhancedPosition,
             previous: null
           });
-        });
+        }
 
         console.log('✅ CoinDCX positions refreshed successfully\n');
         return; // Success - exit retry loop
