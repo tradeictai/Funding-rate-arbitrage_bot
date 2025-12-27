@@ -2,6 +2,7 @@ import deltaAPI from '../services/deltaAPI.js';
 import pi42API from '../services/pi42API.js';
 import config from '../config/config.js';
 import coindcxAPI from '../services/coindcxAPI.js';
+import positionSizer from './positionSizer.js';
 
 /**
  * Order Executor - Phase 3
@@ -15,7 +16,127 @@ class OrderExecutor {
     this.primaryThreshold = config.trading.primaryThreshold;
     this.secondaryThreshold = config.trading.secondaryThreshold;
     this.leverage = config.trading.leverage;
+    this.orderbookDepth = config.trading.orderbookDepth || 20;
+    this.maxRetries = 5;
     // NOTE: Cooldown is now managed by arbitrageEngine.js, not here
+  }
+
+  /**
+   * Helper: Get open orders for Delta
+   * @param {Object} params - Query parameters
+   * @returns {Promise<Array>}
+   */
+  async getOpenOrdersForDelta(params = {}) {
+    try {
+      return await deltaAPI.getOpenOrders(params);
+    } catch (error) {
+      console.error('Failed to get Delta open orders:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Helper: Get open orders for CoinDCX
+   * @param {Object} params - Query parameters
+   * @returns {Promise<Array>}
+   */
+  async getOpenOrdersForCoindcx(params = {}) {
+    try {
+      return await coindcxAPI.getActiveFuturesOrders(params);
+    } catch (error) {
+      console.error('Failed to get CoinDCX open orders:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Helper: Cancel all orders on Delta
+   * @param {Object} filter - Optional filter
+   * @returns {Promise<Object>}
+   */
+  async cancelAllOrdersForDelta(filter = {}) {
+    try {
+      return await deltaAPI.cancelAllOrders(filter);
+    } catch (error) {
+      console.error('Failed to cancel Delta orders:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper: Cancel all orders on CoinDCX
+   * @param {Object} filter - Optional filter
+   * @returns {Promise<Object>}
+   */
+  async cancelAllOrdersForCoindcx(filter = {}) {
+    try {
+      return await coindcxAPI.cancelAllFuturesOpenOrders(filter);
+    } catch (error) {
+      console.error('Failed to cancel CoinDCX orders:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Recalculate price from fresh orderbook for Delta
+   * @param {string} symbol - Delta symbol
+   * @param {string} side - 'LONG' or 'SHORT'
+   * @param {number} quantity - Quantity in USD value
+   * @param {number} contractValue - Contract value
+   * @returns {Promise<number>} - New trading price
+   */
+  async recalculateDeltaPrice(symbol, side, quantity, contractValue) {
+    try {
+      console.log(`\n🔄 Recalculating Delta price from fresh orderbook...`);
+
+      const orderbookRaw = await deltaAPI.getOrderbook(symbol, this.orderbookDepth);
+      const orderbook = positionSizer.normalizeOrderbook(orderbookRaw, 'delta');
+
+      const deltaSide = side === 'LONG' ? 'buy' : 'sell';
+      const usdQuantity = quantity * contractValue;
+
+      const result = positionSizer.calculateTradingPriceFromOrderbook(
+        orderbook,
+        deltaSide,
+        usdQuantity
+      );
+
+      console.log(`   New Delta price: ${result.tradingPrice}`);
+      return result.tradingPrice;
+    } catch (error) {
+      console.error('Failed to recalculate Delta price:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Recalculate price from fresh orderbook for CoinDCX
+   * @param {string} symbol - CoinDCX symbol
+   * @param {string} side - 'LONG' or 'SHORT'
+   * @param {number} quantity - Quantity
+   * @returns {Promise<number>} - New trading price
+   */
+  async recalculateCoindcxPrice(symbol, side, quantity) {
+    try {
+      console.log(`\n🔄 Recalculating CoinDCX price from fresh orderbook...`);
+
+      const orderbookRaw = await coindcxAPI.getOrderbook(symbol, this.orderbookDepth);
+      const orderbook = positionSizer.normalizeOrderbook(orderbookRaw, 'coindcx');
+
+      const coindcxSide = side === 'LONG' ? 'buy' : 'sell';
+
+      const result = positionSizer.calculateTradingPriceFromOrderbook(
+        orderbook,
+        coindcxSide,
+        quantity
+      );
+
+      console.log(`   New CoinDCX price: ${result.tradingPrice}`);
+      return result.tradingPrice;
+    } catch (error) {
+      console.error('Failed to recalculate CoinDCX price:', error.message);
+      throw error;
+    }
   }
 
   /**
@@ -127,58 +248,104 @@ class OrderExecutor {
   }
 
   /**
-   * Place order on Delta Exchange
+   * Place order on Delta Exchange with retry logic
    * @param {string} symbol - Delta symbol (e.g., 'BTCUSD')
    * @param {string} side - 'LONG' or 'SHORT'
-   * @param {number} quantity - Order quantity
+   * @param {number} quantity - Order quantity (contracts)
    * @param {number} price - Limit price (optional, for limit orders)
    * @param {string} orderType - 'market_order' or 'limit_order'
+   * @param {number} contractValue - Contract value for price recalculation
    * @returns {Promise<Object>} - Order result
    */
-  async placeOrderOnDelta(productId, symbol, side, quantity, price = null, orderType = 'market_order') {
-    try {
-      console.log(`\n📤 Placing order on Delta Exchange:`);
-      console.log(`   Product ID: ${productId}`);
-      console.log(`   Symbol: ${symbol}`);
-      console.log(`   Side: ${side}`);
-      console.log(`   Quantity: ${quantity}`);
-      console.log(`   Type: ${orderType}`);
-      if (price) console.log(`   Price: ${price}`);
+  async placeOrderOnDelta(productId, symbol, side, quantity, price = null, orderType = 'market_order', contractValue = null) {
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        console.log(`\n📤 Placing order on Delta Exchange (Attempt ${attempt}/${this.maxRetries}):`);
+        console.log(`   Product ID: ${productId}`);
+        console.log(`   Symbol: ${symbol}`);
+        console.log(`   Side: ${side}`);
+        console.log(`   Quantity: ${quantity} contracts`);
+        console.log(`   Type: ${orderType}`);
+        if (price) console.log(`   Price: ${price}`);
 
-      const deltaSide = side === 'LONG' ? 'buy' : 'sell';
+        const deltaSide = side === 'LONG' ? 'buy' : 'sell';
 
-      const orderParams = {
-        productId: productId,      // Pass product ID
-        symbol: symbol,            // For reference
-        side: deltaSide,
-        orderType: orderType,
-        size: quantity,
-        limitPrice: price,
-        postOnly: false,
-        reduceOnly: false
-      };
+        const orderParams = {
+          productId: productId,      // Pass product ID
+          symbol: symbol,            // For reference
+          side: deltaSide,
+          orderType: orderType,
+          size: quantity,
+          limitPrice: price,
+          postOnly: false,
+          reduceOnly: false
+        };
 
-      const result = await deltaAPI.placeOrder(orderParams);
+        const result = await deltaAPI.placeOrder(orderParams);
 
-      console.log(`✅ Delta order placed successfully:`, result);
+        console.log(`✅ Delta order placed successfully:`, result);
 
-      return {
-        success: true,
-        exchange: 'delta',
-        orderId: result.id,
-        symbol: symbol,
-        side: side,
-        quantity: quantity,
-        result: result
-      };
+        return {
+          success: true,
+          exchange: 'delta',
+          orderId: result.id,
+          symbol: symbol,
+          side: side,
+          quantity: quantity,
+          result: result
+        };
 
-    } catch (error) {
-      console.error(`❌ Failed to place order on Delta:`, error.message);
-      return {
-        success: false,
-        exchange: 'delta',
-        error: error.message
-      };
+      } catch (error) {
+        console.error(`❌ Delta order attempt ${attempt}/${this.maxRetries} failed:`, error.message);
+
+        // If this is the last attempt, return failure
+        if (attempt >= this.maxRetries) {
+          console.error(`❌ All ${this.maxRetries} attempts failed for Delta order`);
+          return {
+            success: false,
+            exchange: 'delta',
+            error: error.message,
+            attempts: attempt
+          };
+        }
+
+        // RETRY LOGIC
+        console.log(`\n🔄 Initiating retry logic for Delta...`);
+
+        try {
+          // Step 1: Check for open orders
+          console.log(`   Step 1: Checking for open orders...`);
+          const openOrders = await this.getOpenOrdersForDelta();
+
+          // Step 2: Cancel all open orders if any exist
+          if (openOrders && openOrders.length > 0) {
+            console.log(`   Step 2: Found ${openOrders.length} open orders, canceling all...`);
+            await this.cancelAllOrdersForDelta();
+            console.log(`   ✅ All open orders canceled`);
+            await sleep(2000); // Wait for cancellation to complete
+          } else {
+            console.log(`   Step 2: No open orders found`);
+          }
+
+          // Step 3: Recalculate price from fresh orderbook (only for limit orders)
+          if (orderType === 'limit_order' && contractValue) {
+            console.log(`   Step 3: Recalculating price from fresh orderbook...`);
+            price = await this.recalculateDeltaPrice(symbol, side, quantity, contractValue);
+            console.log(`   ✅ New price calculated: ${price}`);
+          } else {
+            console.log(`   Step 3: Skipping price recalculation (market order or no contract value)`);
+          }
+
+          console.log(`   Retrying with updated parameters...`);
+
+        } catch (retryError) {
+          console.error(`   ❌ Retry preparation failed:`, retryError.message);
+          // Continue to next attempt even if retry preparation fails
+        }
+
+        // Small delay before retry
+        await sleep(1000);
+      }
     }
   }
 
@@ -192,61 +359,108 @@ class OrderExecutor {
    * @returns {Promise<Object>} - Order result
    */
  async placeOrderOnCoinDCX(symbol, side, quantity, price = null, orderType = 'MARKET') {
-  try {
-    console.log(`\n📤 Placing order on CoinDCX Futures:`);
-    console.log(`   Symbol: ${symbol}`);
-    console.log(`   Side: ${side}`);
-    console.log(`   Quantity: ${quantity}`);
-    console.log(`   Type: ${orderType}`);
-    if (price) console.log(`   Price: ${price}`);
-    const apiSide = side.toUpperCase() === 'LONG' ? 'buy' : 'sell';
-    const orderObj = {
-      pair: symbol, // e.g., "B-BTC_USDT"
-      side: apiSide, // "buy" or "sell"
-      order_type: orderType.toLowerCase() === 'limit' ? 'limit_order' : 'market_order',
-      total_quantity: Number(quantity)
-    };
+  for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+    try {
+      console.log(`\n📤 Placing order on CoinDCX Futures (Attempt ${attempt}/${this.maxRetries}):`);
+      console.log(`   Symbol: ${symbol}`);
+      console.log(`   Side: ${side}`);
+      console.log(`   Quantity: ${quantity}`);
+      console.log(`   Type: ${orderType}`);
+      if (price) console.log(`   Price: ${price}`);
 
-    if (orderType.toLowerCase() === 'limit') {
-      const roundedPrice = Math.round(Number(price) * 1000000) / 1000000;
-      orderObj.price = roundedPrice;
-      orderObj.time_in_force = 'good_till_cancel'; // Optional but safe
+      const apiSide = side.toUpperCase() === 'LONG' ? 'buy' : 'sell';
+      const orderObj = {
+        pair: symbol, // e.g., "B-BTC_USDT"
+        side: apiSide, // "buy" or "sell"
+        order_type: orderType.toLowerCase() === 'limit' ? 'limit_order' : 'market_order',
+        total_quantity: Number(quantity)
+      };
+
+      if (orderType.toLowerCase() === 'limit') {
+        const roundedPrice = Math.round(Number(price) * 1000000) / 1000000;
+        orderObj.price = roundedPrice;
+        orderObj.time_in_force = 'good_till_cancel'; // Optional but safe
+      }
+
+      // Optional: leverage (recommended to match position)
+      if (this.leverage) {
+        orderObj.leverage = Number(this.leverage);
+      }
+
+      // Default safe values
+      orderObj.notification = 'no_notification';
+      orderObj.position_margin_type = 'crossed'; // or 'isolated'
+      orderObj.margin_currency_short_name = 'USDT'; // or 'INR'
+
+      const body = { order: orderObj };
+
+      console.log('CoinDCX Order Payload:', body);
+
+      const result = await coindcxAPI.placeOrder(body);
+
+      console.log(`✅ CoinDCX order placed successfully:`, result);
+
+      return {
+        success: true,
+        exchange: 'coindcx',
+        orderId: result[0]?.id || result.id,
+        symbol: symbol,
+        side: side,
+        quantity: quantity,
+        result: result
+      };
+
+    } catch (error) {
+      console.error(`❌ CoinDCX order attempt ${attempt}/${this.maxRetries} failed:`, error.message);
+
+      // If this is the last attempt, return failure
+      if (attempt >= this.maxRetries) {
+        console.error(`❌ All ${this.maxRetries} attempts failed for CoinDCX order`);
+        return {
+          success: false,
+          exchange: 'coindcx',
+          error: error.message,
+          attempts: attempt
+        };
+      }
+
+      // RETRY LOGIC
+      console.log(`\n🔄 Initiating retry logic for CoinDCX...`);
+
+      try {
+        // Step 1: Check for open orders
+        console.log(`   Step 1: Checking for open orders...`);
+        const openOrders = await this.getOpenOrdersForCoindcx({ status: 'open' });
+
+        // Step 2: Cancel all open orders if any exist
+        if (openOrders && openOrders.length > 0) {
+          console.log(`   Step 2: Found ${openOrders.length} open orders, canceling all...`);
+          await this.cancelAllOrdersForCoindcx();
+          console.log(`   ✅ All open orders canceled`);
+          await sleep(2000); // Wait for cancellation to complete
+        } else {
+          console.log(`   Step 2: No open orders found`);
+        }
+
+        // Step 3: Recalculate price from fresh orderbook (only for limit orders)
+        if (orderType.toLowerCase() === 'limit') {
+          console.log(`   Step 3: Recalculating price from fresh orderbook...`);
+          price = await this.recalculateCoindcxPrice(symbol, side, quantity);
+          console.log(`   ✅ New price calculated: ${price}`);
+        } else {
+          console.log(`   Step 3: Skipping price recalculation (market order)`);
+        }
+
+        console.log(`   Retrying with updated parameters...`);
+
+      } catch (retryError) {
+        console.error(`   ❌ Retry preparation failed:`, retryError.message);
+        // Continue to next attempt even if retry preparation fails
+      }
+
+      // Small delay before retry
+      await sleep(1000);
     }
-
-    // Optional: leverage (recommended to match position)
-    if (this.leverage) {
-      orderObj.leverage = Number(this.leverage);
-    }
-
-    // Default safe values
-    orderObj.notification = 'no_notification';
-    orderObj.position_margin_type = 'crossed'; // or 'isolated'
-    orderObj.margin_currency_short_name = 'USDT'; // or 'INR'
-
-    const body = { order: orderObj };
-
-    console.log('CoinDCX Order Payload:', body);
-
-    const result = await coindcxAPI.placeOrder(body);
-
-    console.log(`✅ CoinDCX order placed successfully:`, result);
-
-    return {
-      success: true,
-      exchange: 'coindcx',
-      orderId: result[0]?.id || result.id,
-      symbol: symbol,
-      side: side,
-      quantity: quantity,
-      result: result
-    };
-  } catch (error) {
-    console.error(`❌ Failed to place order on CoinDCX:`, error.message);
-    return {
-      success: false,
-      exchange: 'coindcx',
-      error: error.message
-    };
   }
 }
 
@@ -526,7 +740,8 @@ class OrderExecutor {
         positions.deltaSide,
         size,
         deltaPrice,
-        'limit_order'
+        'limit_order',
+        contractValue  // Pass contract value for price recalculation on retry
       ),
       this.placeOrderOnCoinDCX(
         coindcxSymbol,

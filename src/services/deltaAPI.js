@@ -391,15 +391,49 @@ class DeltaAPI {
 
   /**
    * Get open orders
+   * @param {Object} params - Optional query parameters (e.g., { product_id: 123 })
+   * @returns {Promise<Array>} - List of open orders
    */
-  async getOpenOrders(symbol = null) {
-    let endpoint = '/v2/orders';
-    if (symbol) {
-      const productId = await this.getProductId(symbol);
-      endpoint += `?product_id=${productId}`;
+  async getOpenOrders(params = {}) {
+    try {
+      let endpoint = '/v2/orders';
+
+      // Build query string if parameters are provided
+      if (Object.keys(params).length > 0) {
+        const queryString = new URLSearchParams(
+          Object.entries(params).map(([k, v]) => [k, String(v)])
+        ).toString();
+        endpoint += `?${queryString}`;
+      }
+
+      const data = await this.request('GET', endpoint, null, true); // Use trade creds
+      console.log("Delta open orders:", data);
+      return data.result || data || [];
+    } catch (error) {
+      console.error("Get Delta open orders error:", error.message);
+      throw error;
     }
-    const data = await this.request('GET', endpoint);
-    return data.result || [];
+  }
+
+  /**
+   * Cancel all orders
+   * @param {Object} filter - Optional filter object (e.g., { product_id: 123 })
+   * @returns {Promise<Object>} - Cancel result
+   */
+  async cancelAllOrders(filter = {}) {
+    try {
+      const endpoint = '/v2/orders/all';
+
+      // Body is optional JSON filter object
+      const body = Object.keys(filter).length > 0 ? filter : null;
+
+      const data = await this.request('DELETE', endpoint, body, true); // Use trade creds
+      console.log("Cancel all Delta orders result:", data);
+      return data.result || data;
+    } catch (error) {
+      console.error("Cancel all Delta orders failed:", error.message);
+      throw error;
+    }
   }
 }
 

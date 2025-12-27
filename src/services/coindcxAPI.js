@@ -407,15 +407,78 @@ class CoinDCXAPI {
     }
   }
   /**
-   * Get open orders
+   * Get open orders (old method - kept for backwards compatibility)
    */
   async getOpenOrders(symbol = null) {
     const params = symbol ? { pair: symbol } : {};
     return await this.privateRequest(
       "POST",
       "/exchange/v1/derivatives/futures/orders",
-      params
+      params,
+      true,  // useTradeCreds
+      true   // useBufferFormat
     );
+  }
+
+  /**
+   * Get active futures orders
+   * @param {Object} params - Optional filters (status, size, page)
+   * @returns {Promise<Array>} - List of active orders
+   */
+  async getActiveFuturesOrders(params = {}) {
+    const body = {
+      timestamp: Date.now(),
+      status: "open", // active/open futures orders
+      size: 100,
+      page: 1,
+      ...params // Allow override
+    };
+
+    try {
+      const data = await this.privateRequest(
+        "POST",
+        "/exchange/v1/derivatives/futures/orders",
+        body,
+        true,  // useTradeCreds
+        false  // useBufferFormat = false for this endpoint
+      );
+
+      console.log('Active CoinDCX futures orders:', JSON.stringify(data, null, 2));
+      return data || [];
+    } catch (error) {
+      console.error('CoinDCX futures orders error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Cancel all futures open orders
+   * @param {Object} filter - Optional filter (e.g., { margin_currency_short_name: ["USDT"] })
+   * @returns {Promise<Object>} - Cancel result
+   */
+  async cancelAllFuturesOpenOrders(filter = {}) {
+    const body = {
+      timestamp: Date.now(),
+      ...filter // Optional: margin_currency_short_name: ["USDT"]
+    };
+
+    try {
+      const data = await this.privateRequest(
+        "POST",
+        "/exchange/v1/derivatives/futures/positions/cancel_all_open_orders",
+        body,
+        true,  // useTradeCreds
+        false  // useBufferFormat = false
+      );
+
+      console.log('✅ All CoinDCX futures open orders canceled!');
+      console.log('Response:', JSON.stringify(data, null, 2));
+
+      return data;
+    } catch (error) {
+      console.error('❌ CoinDCX cancel all failed:', error.message);
+      throw error;
+    }
   }
 
   /**
@@ -425,7 +488,9 @@ class CoinDCXAPI {
     return await this.privateRequest(
       "POST",
       "/exchange/v1/derivatives/futures/orders/cancel",
-      { id: orderId }
+      { id: orderId },
+      true,  // useTradeCreds
+      true   // useBufferFormat
     );
   }
 }
