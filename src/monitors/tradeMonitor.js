@@ -312,7 +312,7 @@ class TradeMonitor extends EventEmitter {
     const totalPnL = deltaPnL + coindcxPnL;
 
     // const timeSinceFunding = now - this.fundingConfirmedAt;
-    const MAX_WAIT_AFTER_FUNDING_MS = 50 * 60 * 1000; // 50 minutes
+    const MAX_WAIT_AFTER_FUNDING_MS = 1 * 60 * 1000; // 50 minutes
 
     console.log("\n💰 P&L Status:");
     console.log(`   Delta unrealized P&L: $${deltaPnL.toFixed(4)}`);
@@ -349,58 +349,58 @@ class TradeMonitor extends EventEmitter {
 
 
       // 🚨 STOP LOSS CHECK
-      if (totalPnL <= -0.4) {
-        console.log("\n🚨 STOP LOSS TRIGGERED → IMMEDIATE EXIT");
-        console.log(`   Combined P&L: $${totalPnL.toFixed(4)} < -$0.40`);
+      // if (totalPnL <= -0.4) {
+      //   console.log("\n🚨 STOP LOSS TRIGGERED → IMMEDIATE EXIT");
+      //   console.log(`   Combined P&L: $${totalPnL.toFixed(4)} < -$0.40`);
 
-        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
-        const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-        const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
+      //   const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+      //   const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+      //   const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
-        this.emergencyExit("STOP_LOSS", {
-          reason: "Stop loss: Combined P&L below -$0.40",
-          totalPnL: totalPnL,
-          deltaPnL: deltaPnL,
-          coindcxPnL: coindcxPnL,
-          fundingTime: this.lockedFundingTime,
-          fundingConfirmedAt: this.fundingConfirmedAt,
-          timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
-          deltaFR: deltaFRData ? deltaFRData.rate : null,
-          coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
-          deltaPosition: this.latestDeltaPosition,
-          coindcxPosition: this.latestCoindcxPosition,
-        });
+      //   this.emergencyExit("STOP_LOSS", {
+      //     reason: "Stop loss: Combined P&L below -$0.40",
+      //     totalPnL: totalPnL,
+      //     deltaPnL: deltaPnL,
+      //     coindcxPnL: coindcxPnL,
+      //     fundingTime: this.lockedFundingTime,
+      //     fundingConfirmedAt: this.fundingConfirmedAt,
+      //     timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
+      //     deltaFR: deltaFRData ? deltaFRData.rate : null,
+      //     coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
+      //     deltaPosition: this.latestDeltaPosition,
+      //     coindcxPosition: this.latestCoindcxPosition,
+      //   });
 
-        this.resetFundingState();
-        return;
-      }
+      //   this.resetFundingState();
+      //   return;
+      // }
 
       // ✅ PROFIT TARGET CHECK
-      if (totalPnL >= 0) {
-        console.log("\n✅ PROFIT TARGET REACHED → EXECUTING NORMAL EXIT");
-        console.log(`   Combined P&L: $${totalPnL.toFixed(4)} > $0.10`);
+      // if (totalPnL >= 0) {
+      //   console.log("\n✅ PROFIT TARGET REACHED → EXECUTING NORMAL EXIT");
+      //   console.log(`   Combined P&L: $${totalPnL.toFixed(4)} > $0.10`);
 
-        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
-        const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-        const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
+      //   const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+      //   const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+      //   const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
-        this.emergencyExit("PROFIT_EXIT", {
-          reason: "Profit target reached after funding",
-          totalPnL: totalPnL,
-          deltaPnL: deltaPnL,
-          coindcxPnL: coindcxPnL,
-          fundingTime: this.lockedFundingTime,
-          fundingConfirmedAt: this.fundingConfirmedAt,
-          timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
-          deltaFR: deltaFRData ? deltaFRData.rate : null,
-          coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
-          deltaPosition: this.latestDeltaPosition,
-          coindcxPosition: this.latestCoindcxPosition,
-        });
+      //   this.emergencyExit("PROFIT_EXIT", {
+      //     reason: "Profit target reached after funding",
+      //     totalPnL: totalPnL,
+      //     deltaPnL: deltaPnL,
+      //     coindcxPnL: coindcxPnL,
+      //     fundingTime: this.lockedFundingTime,
+      //     fundingConfirmedAt: this.fundingConfirmedAt,
+      //     timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
+      //     deltaFR: deltaFRData ? deltaFRData.rate : null,
+      //     coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
+      //     deltaPosition: this.latestDeltaPosition,
+      //     coindcxPosition: this.latestCoindcxPosition,
+      //   });
 
-        this.resetFundingState();
-        return;
-      }
+      //   this.resetFundingState();
+      //   return;
+      // }
 
     } else {
       console.log("Waiting for timing exit....")
