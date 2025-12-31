@@ -1,5 +1,7 @@
 import ArbitrageEngine from "./core/arbitrageEngine.js";
 import WebSocketServer from "./server/websocketServer.js";
+import APIServer from "./server/apiServer.js";
+import { loadConfigFromDB } from "./config/configLoader.js";
 
 /**
  * Main Entry Point for Funding Rate Arbitrage System
@@ -7,15 +9,21 @@ import WebSocketServer from "./server/websocketServer.js";
  * Phase 2: Position Sizing, Liquidity & Profit Analysis
  * Phase 3: Order Execution on Both Exchanges
  * Dashboard: Real-time WebSocket server for frontend
+ * API: REST API for configuration management
  */
 
 async function main() {
   console.clear();
   console.log("╔════════════════════════════════════════════════════════════╗");
-  console.log("║   CEX Funding Rate Arbitrage - Phase 1, 2 & 3            ║");
-  console.log("║   Delta Exchange ⇄ Pi42                                   ║");
+  console.log("║   CEX Funding Rate Arbitrage - Phase 1, 2 & 3              ║");
+  console.log("║   Delta Exchange ⇄ CoinDcx                                ║");
   console.log("╚════════════════════════════════════════════════════════════╝");
   console.log("");
+
+  // Load configuration from MongoDB
+  console.log("📝 Loading configuration from database...");
+  await loadConfigFromDB();
+  console.log("✅ Configuration loaded\n");
 
   const engine = new ArbitrageEngine();
 
@@ -38,6 +46,9 @@ async function main() {
     if (engine.wsServer) {
       engine.wsServer.stop();
     }
+    if (engine.apiServer) {
+      await engine.apiServer.stop();
+    }
     await engine.stop();
     process.exit(0);
   });
@@ -46,6 +57,9 @@ async function main() {
     console.log("\n\n⚠️  Received SIGTERM signal");
     if (engine.wsServer) {
       engine.wsServer.stop();
+    }
+    if (engine.apiServer) {
+      await engine.apiServer.stop();
     }
     await engine.stop();
     process.exit(0);
@@ -78,6 +92,17 @@ async function main() {
 
     // Store wsServer for cleanup
     engine.wsServer = wsServer;
+
+    // ========================================
+    // START REST API SERVER FOR CONFIG MANAGEMENT
+    // ========================================
+    console.log("🚀 Starting REST API server for configuration...");
+    const apiServer = new APIServer(5004);
+    await apiServer.start();
+    console.log("✅ REST API available at http://localhost:5004\n");
+
+    // Store apiServer for cleanup
+    engine.apiServer = apiServer;
 
     // Display status every 30 seconds
     setInterval(() => {
