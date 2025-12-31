@@ -23,7 +23,7 @@ class WebSocketServer {
     // Initialize Socket.IO with CORS
     this.io = new Server(this.server, {
       cors: {
-        origin: "http://localhost:3000",
+        origin: ["http://localhost:3000", "http://3.25.179.89:3000"],
         methods: ["GET", "POST"],
         credentials: true,
       },
