@@ -22,7 +22,7 @@ class APIServer {
     // CORS configuration
     this.app.use(
       cors({
-        origin: ["http://localhost:3000", "http://localhost:3001"], // Add your frontend URLs
+        origin: ["http://localhost:3000", "http://localhost:3001", "http://3.25.179.89:3000"], // Add your frontend URLs
         credentials: true,
       })
     );

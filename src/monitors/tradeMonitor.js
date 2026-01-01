@@ -283,7 +283,7 @@ class TradeMonitor extends EventEmitter {
     if (!this.lockedFundingTime) {
 
       // Funding time reached - lock it and capture initial realized funding
-      this.lockedFundingTime = Date.now() + 300000;
+      this.lockedFundingTime = Date.now() + 30000;
       this.lastRealizedFunding = Number(
         this.latestDeltaPosition.realized_funding || 0
       );
