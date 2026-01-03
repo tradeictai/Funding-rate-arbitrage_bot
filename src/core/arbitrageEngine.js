@@ -973,6 +973,75 @@ class ArbitrageEngine extends EventEmitter {
       console.log(`   CoinDCX Position: ${hasCoindcxPosition ? (coindcxPosition ? `✅ Exit Price: $${coindcxPosition}` : '⚠️ Will use market order') : '⏭️ No position'}`);
       console.log('====================================================================');
 
+      // ============================================================
+      // 🎯 REVALIDATE SPREAD WITH ACTUAL TRADING PRICES
+      // ============================================================
+      if (deltaPosition && coindcxPosition) {
+        console.log('\n🔍 REVALIDATING SPREAD WITH ACTUAL TRADING PRICES');
+        console.log('━'.repeat(60));
+
+        // Determine which is SHORT and which is LONG based on original trade direction
+        const deltaSide = exitData.details.deltaPosition.side; // 'LONG' or 'SHORT'
+        const coindcxPositionType = exitData.details.coindcxPosition.positionType; // 'LONG' or 'SHORT'
+
+        // When exiting:
+        // - If original Delta position was LONG → we SELL at deltaPosition (bid price)
+        // - If original Delta position was SHORT → we BUY at deltaPosition (ask price)
+        // Same logic for CoinDCX
+        const deltaExitPrice = deltaPosition;
+        const coindcxExitPrice = coindcxPosition;
+
+        console.log(`   Original Positions:`);
+        console.log(`     Delta: ${deltaSide} → Exiting with ${deltaSide === 'LONG' ? 'SELL' : 'BUY'}`);
+        console.log(`     CoinDCX: ${coindcxPositionType} → Exiting with ${coindcxPositionType === 'LONG' ? 'SELL' : 'BUY'}`);
+        console.log(`   Exit Prices:`);
+        console.log(`     Delta Exit Price: $${deltaExitPrice.toFixed(8)}`);
+        console.log(`     CoinDCX Exit Price: $${coindcxExitPrice.toFixed(8)}`);
+
+        // Calculate actual executable spread
+        // The spread is the price difference between the two exchanges
+        const actualSpread = Math.abs((coindcxExitPrice - deltaExitPrice) / deltaExitPrice) * 100;
+
+        console.log(`   Actual Executable Spread: ${actualSpread.toFixed(4)}%`);
+
+        const EXIT_SPREAD_TARGET = 0.05; // 0.05%
+
+        // Only validate spread if this exit was triggered by spread convergence
+        if (exitData.reason && exitData.reason.includes('SPREAD_CONVERGENCE')) {
+          console.log(`   Exit Trigger: SPREAD_CONVERGENCE → Validating spread...`);
+
+          if (actualSpread > EXIT_SPREAD_TARGET) {
+            console.log(`\n⚠️ SPREAD REVALIDATION FAILED!`);
+            console.log(`   Expected: ≤ ${EXIT_SPREAD_TARGET}%`);
+            console.log(`   Actual: ${actualSpread.toFixed(4)}%`);
+            console.log(`   Price Difference: $${Math.abs(coindcxExitPrice - deltaExitPrice).toFixed(8)}`);
+            console.log(`   → Spread widened since mark price detection. ABORTING EXIT.`);
+            console.log('━'.repeat(60));
+
+            // Don't exit - spread is not favorable anymore
+            console.log('🚫 Exit aborted - spread no longer meets target');
+            console.log('   Trade will continue monitoring for better exit opportunity');
+            return;
+          }
+
+          console.log(`✅ SPREAD REVALIDATION PASSED: ${actualSpread.toFixed(4)}% ≤ ${EXIT_SPREAD_TARGET}%`);
+          console.log(`   → Safe to proceed with exit`);
+          console.log(`   → Profit capture confirmed at orderbook level`);
+        } else {
+          console.log(`ℹ️ Spread check skipped (exit reason: ${exitData.reason})`);
+          console.log(`   Current actual spread: ${actualSpread.toFixed(4)}%`);
+          console.log(`   → Proceeding with emergency exit regardless of spread`);
+        }
+
+        console.log('━'.repeat(60));
+      } else {
+        console.log('\n⚠️ Cannot revalidate spread - missing trading prices');
+        console.log(`   Delta TP: ${deltaPosition ? 'Available' : 'Missing'}`);
+        console.log(`   CoinDCX TP: ${coindcxPosition ? 'Available' : 'Missing'}`);
+        console.log('   → Proceeding with market orders\n');
+      }
+      // ============================================================
+
       // Set exit data
       exitData.deltaPosition = deltaPosition;
       exitData.coindcxPosition = coindcxPosition;

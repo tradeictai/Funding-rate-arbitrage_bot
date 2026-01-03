@@ -362,6 +362,9 @@ class TradeMonitor extends EventEmitter {
   checkForNormalExit() {
     if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return;
 
+    // ============================================================
+    // 📅 STEP 1: GET FUNDING TIME INFO FIRST
+    // ============================================================
     const deltaSymbol = this.latestDeltaPosition.product_symbol;
     const frData = this.deltaMonitor.getFundingRate(deltaSymbol);
 
@@ -370,189 +373,232 @@ class TradeMonitor extends EventEmitter {
       return;
     }
 
-    const fundingTimeMs = new Date(frData.nextFundingTime).getTime();
+    // Convert Date object to timestamp (nextFundingTime is a Date object, not a number)
+    const fundingTimeMs = frData.nextFundingTime instanceof Date
+      ? frData.nextFundingTime.getTime()
+      : new Date(frData.nextFundingTime).getTime();
 
-    // if (Number.isNaN(fundingTimeMs)) {
-    //   console.error("❌ Invalid funding time format:", frData.nextFundingTime);
-    //   return;
-    // }
+    if (Number.isNaN(fundingTimeMs)) {
+      console.error("❌ Invalid funding time format:", frData.nextFundingTime);
+      return;
+    }
 
     const now = Date.now();
-    // console.log(`📅 Next funding time: ${new Date(fundingTimeMs).toLocaleString("en-IN")}`);
+    const timeUntilFunding = fundingTimeMs - now;
+
+    console.log(`\n📅 Funding Schedule:`);
+    console.log(`   Current Time: ${new Date(now).toLocaleString("en-IN")}`);
+    console.log(`   Next Funding: ${new Date(fundingTimeMs).toLocaleString("en-IN")}`);
+    console.log(`   Time Until Funding: ${(timeUntilFunding / 1000).toFixed(0)}s (${(timeUntilFunding / 60000).toFixed(1)} minutes)`);
 
     // ============================
-    // 1️⃣ WAIT UNTIL FUNDING TIME
+    // STEP 2: WAIT UNTIL FUNDING TIME HAS PASSED
+    // ============================
+    if (timeUntilFunding > 0) {
+      const minutes = Math.floor(timeUntilFunding / 60000);
+      const seconds = Math.floor((timeUntilFunding % 60000) / 1000);
+      console.log(`⏳ Waiting for funding... ${minutes}m ${seconds}s remaining`);
+      console.log(`   → Spread exit is DISABLED until funding completes`);
+      console.log(`   → Exit logic will activate AFTER funding time\n`);
+
+      // Reset locked funding time if we're still before funding
+      this.lockedFundingTime = null;
+      this.fundingConfirmedAt = null;
+      return; // Don't proceed with ANY exit checks until funding passes
+    }
+
+    // ============================
+    // 2️⃣ FUNDING TIME HAS PASSED - LOCK IT ONCE
     // ============================
     if (!this.lockedFundingTime) {
-
-      // Funding time reached - lock it and capture initial realized funding
-      this.lockedFundingTime = Date.now() + 30000;
+      this.lockedFundingTime = fundingTimeMs; // Use ACTUAL funding time, not Date.now()
       this.lastRealizedFunding = Number(
         this.latestDeltaPosition.realized_funding || 0
       );
-      // console.log("🕒 Funding time reached, waiting for funding credit...");
 
-      console.log(`🧪 SIMULATION MODE ACTIVE`);
-      console.log(
-        `🎯 Simulated funding occurred at: ${new Date(
-          this.lockedFundingTime
-        ).toLocaleString()}`
-      );
-      console.log(
-        `   → Normal exit will trigger in ~0 seconds (since 30s > 15s delay)`
-      );
-
+      console.log("\n🕒 FUNDING TIME REACHED!");
+      console.log(`   Locked At: ${new Date(this.lockedFundingTime).toLocaleString("en-IN")}`);
+      console.log(`   Initial Realized Funding: $${this.lastRealizedFunding.toFixed(4)}`);
+      console.log(`   → Starting exit window monitoring\n`);
     }
 
     const timeSinceLockedFunding = now - this.lockedFundingTime;
-    console.log("Time since locked: ", timeSinceLockedFunding)
+    console.log(`\n⏱️  Time since funding: ${(timeSinceLockedFunding / 1000).toFixed(0)}s (${(timeSinceLockedFunding / 60000).toFixed(1)} minutes)`);
 
-    const EXIT_DELAY_MS = 15000;
+    // ============================
+    // 3️⃣ WAIT FOR FUNDING SETTLEMENT (Optional buffer for settlement)
+    // ============================
+    const FUNDING_SETTLEMENT_BUFFER = 30000; // 30 seconds for funding to settle
+
+    if (timeSinceLockedFunding < FUNDING_SETTLEMENT_BUFFER) {
+      const currentRealizedFunding = Number(this.latestDeltaPosition.realized_funding || 0);
+
+      console.log(`\n⏳ Waiting for funding settlement buffer (${FUNDING_SETTLEMENT_BUFFER/1000}s)...`);
+      console.log(`   Last Realized Funding: $${this.lastRealizedFunding.toFixed(4)}`);
+      console.log(`   Current Realized Funding: $${currentRealizedFunding.toFixed(4)}`);
+
+      // Check if funding was credited
+      if (currentRealizedFunding !== this.lastRealizedFunding) {
+        if (!this.fundingConfirmedAt) {
+          this.fundingConfirmedAt = now;
+          const fundingReceived = currentRealizedFunding - this.lastRealizedFunding;
+          console.log(`\n💰 FUNDING SETTLEMENT DETECTED!`);
+          console.log(`   Amount Received: $${fundingReceived.toFixed(4)}`);
+          console.log(`   Confirmed At: ${new Date(this.fundingConfirmedAt).toLocaleString("en-IN")}`);
+        }
+      }
+
+      const bufferRemaining = FUNDING_SETTLEMENT_BUFFER - timeSinceLockedFunding;
+      console.log(`   Buffer remaining: ${(bufferRemaining / 1000).toFixed(0)}s`);
+      console.log(`   → Will check exit conditions after buffer\n`);
+      return; // Wait for buffer to complete
+    }
+
+    // ============================
+    // 4️⃣ CHECK EXIT CONDITIONS (After funding + settlement buffer)
+    // ============================
+    const MAX_WAIT_AFTER_FUNDING_MS = 60 * 60 * 1000; // 60 minutes max
+
+    // ============================================================
+    // 🎯 SPREAD-BASED EXIT CHECK (AFTER FUNDING)
+    // This check runs ONLY after funding time has passed
+    // Exit Rule: Spread ≤ 0.05%
+    // ============================================================
+    const deltaMarkPrice = this.latestDeltaPosition.mark_price;
+    const coindcxMarkPrice = this.latestCoindcxPosition.mark_price;
+
+    if (deltaMarkPrice && coindcxMarkPrice) {
+      const priceDifference = coindcxMarkPrice - deltaMarkPrice;
+      const currentSpread = Math.abs(priceDifference / deltaMarkPrice) * 100;
+
+      console.log('\n📊 SPREAD MONITORING (Post-Funding)');
+      console.log('━'.repeat(60));
+      console.log(`   Delta Mark Price:   $${deltaMarkPrice.toFixed(8)}`);
+      console.log(`   CoinDCX Mark Price: $${coindcxMarkPrice.toFixed(8)}`);
+      console.log(`   Price Difference:   $${priceDifference.toFixed(8)} (${priceDifference >= 0 ? '+' : ''}${((priceDifference / deltaMarkPrice) * 100).toFixed(4)}%)`);
+      console.log(`   Current Spread:     ${currentSpread.toFixed(4)}%`);
+
+      const EXIT_SPREAD_TARGET = 0.05; // 0.05%
+
+      // Check if spread has converged to target or lower
+      if (currentSpread <= EXIT_SPREAD_TARGET) {
+        console.log(`\n✅ SPREAD CONVERGENCE DETECTED (After Funding)!`);
+        console.log(`   Target: ≤ ${EXIT_SPREAD_TARGET}%`);
+        console.log(`   Actual: ${currentSpread.toFixed(4)}%`);
+        console.log(`   Time since funding: ${(timeSinceLockedFunding / 1000).toFixed(0)}s`);
+        console.log(`   → Triggering EXIT`);
+        console.log('━'.repeat(60));
+
+        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+        const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+        const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
+
+        this.emergencyExit("SPREAD_CONVERGENCE", {
+          reason: `Spread converged to ${currentSpread.toFixed(4)}% after funding (target: ${EXIT_SPREAD_TARGET}%)`,
+          currentSpread: currentSpread,
+          targetSpread: EXIT_SPREAD_TARGET,
+          deltaMarkPrice: deltaMarkPrice,
+          coindcxMarkPrice: coindcxMarkPrice,
+          priceDifference: priceDifference,
+          timeSinceFunding: (timeSinceLockedFunding / 1000).toFixed(0),
+          deltaFR: deltaFRData ? deltaFRData.rate : null,
+          coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
+          deltaPosition: this.latestDeltaPosition,
+          coindcxPosition: this.latestCoindcxPosition,
+        });
+
+        this.resetFundingState();
+        return;
+      }
+
+      console.log(`   Status: Spread ${currentSpread.toFixed(4)}% > ${EXIT_SPREAD_TARGET}% → Continue monitoring`);
+      console.log('━'.repeat(60));
+    }
+    // ============================================================
+
     const deltaPnL = this.latestDeltaPosition.unrealized_pnl || 0;
     const coindcxPnL = this.calculateCoindcxUnrealizedPnL(
       this.latestCoindcxPosition
     );
     const totalPnL = deltaPnL + coindcxPnL;
 
-    // const timeSinceFunding = now - this.fundingConfirmedAt;
-    const MAX_WAIT_AFTER_FUNDING_MS = 1 * 60 * 1000; // 50 minutes
-
-    console.log("\n💰 P&L Status:");
+    console.log("\n💰 P&L Status (Post-Funding):");
     console.log(`   Delta unrealized P&L: $${deltaPnL.toFixed(4)}`);
     console.log(`   CoinDCX unrealized P&L: $${coindcxPnL.toFixed(4)}`);
     console.log(`   Combined P&L: $${totalPnL.toFixed(4)}`);
 
-    if (timeSinceLockedFunding >= EXIT_DELAY_MS) {
+    // ✅ PROFIT TARGET CHECK (Exit Condition B: Total PnL >= 0)
+    if (totalPnL >= 0) {
+      console.log("\n✅ PROFIT TARGET REACHED → EXECUTING EXIT");
+      console.log(`   Combined P&L: $${totalPnL.toFixed(4)} >= $0`);
+      console.log(`   → Exiting after funding completion`);
 
+      const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+      const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+      const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
-      // =====================================
-      // 2️⃣ WAIT FOR FUNDING CONFIRMATION
-      // =====================================
-      // const currentRealizedFunding = Number(
-      //   this.latestDeltaPosition.realized_funding || 0
-      // );
+      this.emergencyExit("PROFIT_EXIT", {
+        reason: "Profit target reached after funding",
+        totalPnL: totalPnL,
+        deltaPnL: deltaPnL,
+        coindcxPnL: coindcxPnL,
+        fundingTime: this.lockedFundingTime,
+        fundingConfirmedAt: this.fundingConfirmedAt,
+        timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
+        deltaFR: deltaFRData ? deltaFRData.rate : null,
+        coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
+        deltaPosition: this.latestDeltaPosition,
+        coindcxPosition: this.latestCoindcxPosition,
+      });
 
-      // if (currentRealizedFunding === this.lastRealizedFunding) {
-      //   console.log("⏳ Funding time passed, waiting for funding settlement...");
-      //   return;
-      // }
+      this.resetFundingState();
+      return;
+    }
 
-      // // Funding confirmed — lock settlement time ONCE
-      // if (!this.fundingConfirmedAt) {
-      //   this.fundingConfirmedAt = now;
-      //   console.log(
-      //     "💰 FUNDING CONFIRMED AT:",
-      //     new Date(this.fundingConfirmedAt).toLocaleString("en-IN")
-      //   );
-      // }
+    // ✅ BOTH POSITIONS POSITIVE (Alternative profit check)
+    if (deltaPnL >= 0 && coindcxPnL >= 0) {
+      console.log("\n✅ BOTH POSITIONS PROFITABLE → EXECUTING EXIT");
+      console.log(`   Delta P&L: $${deltaPnL.toFixed(4)} >= $0`);
+      console.log(`   CoinDCX P&L: $${coindcxPnL.toFixed(4)} >= $0`);
+      console.log(`   Combined P&L: $${totalPnL.toFixed(4)}`);
 
-      // ============================
-      // 3️⃣ START EXIT WINDOW
-      // ============================
+      const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+      const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+      const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
+      this.emergencyExit("PROFIT_EXIT", {
+        reason: "Both positions profitable after funding",
+        totalPnL: totalPnL,
+        deltaPnL: deltaPnL,
+        coindcxPnL: coindcxPnL,
+        fundingTime: this.lockedFundingTime,
+        fundingConfirmedAt: this.fundingConfirmedAt,
+        timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
+        deltaFR: deltaFRData ? deltaFRData.rate : null,
+        coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
+        deltaPosition: this.latestDeltaPosition,
+        coindcxPosition: this.latestCoindcxPosition,
+      });
 
-      // 🚨 STOP LOSS CHECK
-      // if (totalPnL <= -0.4) {
-      //   console.log("\n🚨 STOP LOSS TRIGGERED → IMMEDIATE EXIT");
-      //   console.log(`   Combined P&L: $${totalPnL.toFixed(4)} < -$0.40`);
-
-      //   const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
-      //   const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-      //   const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
-
-      //   this.emergencyExit("STOP_LOSS", {
-      //     reason: "Stop loss: Combined P&L below -$0.40",
-      //     totalPnL: totalPnL,
-      //     deltaPnL: deltaPnL,
-      //     coindcxPnL: coindcxPnL,
-      //     fundingTime: this.lockedFundingTime,
-      //     fundingConfirmedAt: this.fundingConfirmedAt,
-      //     timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
-      //     deltaFR: deltaFRData ? deltaFRData.rate : null,
-      //     coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
-      //     deltaPosition: this.latestDeltaPosition,
-      //     coindcxPosition: this.latestCoindcxPosition,
-      //   });
-
-      //   this.resetFundingState();
-      //   return;
-      // }
-
-      // ✅ PROFIT TARGET CHECK
-      if (totalPnL >= 0) {
-        console.log("\n✅ PROFIT TARGET REACHED → EXECUTING NORMAL EXIT");
-        console.log(`   Combined P&L: $${totalPnL.toFixed(4)} > $0.10`);
-
-        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
-        const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-        const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
-
-        this.emergencyExit("PROFIT_EXIT", {
-          reason: "Profit target reached after funding",
-          totalPnL: totalPnL,
-          deltaPnL: deltaPnL,
-          coindcxPnL: coindcxPnL,
-          fundingTime: this.lockedFundingTime,
-          fundingConfirmedAt: this.fundingConfirmedAt,
-          timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
-          deltaFR: deltaFRData ? deltaFRData.rate : null,
-          coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
-          deltaPosition: this.latestDeltaPosition,
-          coindcxPosition: this.latestCoindcxPosition,
-        });
-
-        this.resetFundingState();
-        return;
-      }
-
-      if (deltaPnL >= 0  && coindcxPnL >=0) {
-        console.log("\n✅ PROFIT TARGET REACHED → EXECUTING NORMAL EXIT");
-        console.log(`   Combined P&L: $${totalPnL.toFixed(4)} > $0.10`);
-
-        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
-        const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-        const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
-
-        this.emergencyExit("PROFIT_EXIT", {
-          reason: "Profit target reached after funding",
-          totalPnL: totalPnL,
-          deltaPnL: deltaPnL,
-          coindcxPnL: coindcxPnL,
-          fundingTime: this.lockedFundingTime,
-          fundingConfirmedAt: this.fundingConfirmedAt,
-          timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
-          deltaFR: deltaFRData ? deltaFRData.rate : null,
-          coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
-          deltaPosition: this.latestDeltaPosition,
-          coindcxPosition: this.latestCoindcxPosition,
-        });
-
-        this.resetFundingState();
-        return;
-      }
-
-    } else {
-      console.log("Waiting for timing exit....")
+      this.resetFundingState();
+      return;
     }
 
 
-    // ⏱️ TIMEOUT EXIT
+    // ⏱️ TIMEOUT EXIT (Force exit if waited too long after funding)
     if (timeSinceLockedFunding >= MAX_WAIT_AFTER_FUNDING_MS) {
       console.log("\n⚠️ EMERGENCY TIMEOUT → FORCING EXIT");
-      console.log(
-        `   Funding confirmed at: ${new Date(this.fundingConfirmedAt).toLocaleString("en-IN")}`
-      );
-      console.log(
-        `   Time elapsed: ${(timeSinceLockedFunding / 1000 / 60).toFixed(1)} minutes`
-      );
+      console.log(`   Funding time: ${new Date(this.lockedFundingTime).toLocaleString("en-IN")}`);
+      console.log(`   Time elapsed: ${(timeSinceLockedFunding / 60000).toFixed(1)} minutes`);
       console.log(`   Current P&L: $${totalPnL.toFixed(4)}`);
+      console.log(`   → Maximum wait time (${MAX_WAIT_AFTER_FUNDING_MS/60000} minutes) exceeded`);
 
       const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
       const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
       const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
       this.emergencyExit("TIMEOUT_EXIT", {
-        reason: "Emergency timeout: 50 minutes after funding without target",
+        reason: `Emergency timeout: ${(MAX_WAIT_AFTER_FUNDING_MS/60000)} minutes after funding without profit target`,
         totalPnL: totalPnL,
         deltaPnL: deltaPnL,
         coindcxPnL: coindcxPnL,
@@ -569,29 +615,15 @@ class TradeMonitor extends EventEmitter {
       return;
     }
 
-    // Still waiting for profit target or stop loss
+    // Still monitoring - waiting for profit target
     const elapsedMinutes = (timeSinceLockedFunding / 60000).toFixed(1);
     const remainingMinutes = ((MAX_WAIT_AFTER_FUNDING_MS - timeSinceLockedFunding) / 60000).toFixed(1);
 
-    console.log(`\n⏳ Monitoring... Elapsed: ${elapsedMinutes}m | Remaining: ${remainingMinutes}m`);
-    console.log(`💰 Current P&L: $${totalPnL.toFixed(4)} (Target: >$0.10 or <-$0.40)`);
-
-    if (timeSinceLockedFunding > 0) {
-      const remainingNormal = EXIT_DELAY_MS - timeSinceLockedFunding;
-      if (remainingNormal > 0) {
-        console.log(
-          `   ⏳ Waiting ${Math.floor(
-            remainingNormal / 1000
-          )}s for normal exit...`
-        );
-      } else {
-        console.log(
-          `   ⏳ Normal delay passed — waiting up to ${(MAX_WAIT_AFTER_FUNDING_MS - timeSinceLockedFunding) / 60000
-          } more minutes before emergency`
-        );
-      }
-    }
-
+    console.log(`\n⏳ Monitoring for profit target...`);
+    console.log(`   Elapsed: ${elapsedMinutes} minutes | Remaining: ${remainingMinutes} minutes`);
+    console.log(`   Current P&L: $${totalPnL.toFixed(4)}`);
+    console.log(`   Target: Total PnL >= $0 OR Both positions >= $0`);
+    console.log(`   → Will continue monitoring until profit target or timeout\n`);
   }
 
   // Helper method to reset funding state

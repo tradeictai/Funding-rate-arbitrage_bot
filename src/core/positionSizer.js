@@ -275,6 +275,65 @@ class PositionSizer {
     const TP_EX2 = coindcxTPResult.tradingPrice;
     console.log(`TP_EX2 (Coindcx):    $${TP_EX2.toFixed(8)}`);
 
+    // ============================================================
+    // 🎯 SPREAD VALIDATION (ENTRY RULE)
+    // ============================================================
+    console.log('\n🔍 SPREAD VALIDATION');
+    console.log('━'.repeat(60));
+
+    // Determine which exchange is SHORT and which is LONG
+    const shortExchange = deltaSide === 'sell' ? 'Delta' : 'Coindcx';
+    const longExchange = deltaSide === 'buy' ? 'Delta' : 'Coindcx';
+    const shortPrice = deltaSide === 'sell' ? TP_EX1 : TP_EX2;
+    const longPrice = deltaSide === 'buy' ? TP_EX1 : TP_EX2;
+
+    console.log(`SHORT: ${shortExchange} @ $${shortPrice.toFixed(8)}`);
+    console.log(`LONG:  ${longExchange} @ $${longPrice.toFixed(8)}`);
+
+    // Calculate spread: (Short Price - Long Price) / Long Price * 100
+    const priceSpread = ((shortPrice - longPrice) / longPrice) * 100;
+    console.log(`Price Spread: ${priceSpread.toFixed(4)}%`);
+
+    // ENTRY RULE: Short price must be > Long price AND spread >= 0.15%
+    const MIN_ENTRY_SPREAD = 0.15; // 0.15%
+
+    if (shortPrice <= longPrice) {
+      console.log(`❌ ENTRY REJECTED: Short price ($${shortPrice.toFixed(8)}) <= Long price ($${longPrice.toFixed(8)})`);
+      console.log('━'.repeat(60));
+      return {
+        canTrade: false,
+        reason: `Invalid spread: SHORT price must be > LONG price (SHORT=${shortPrice.toFixed(8)}, LONG=${longPrice.toFixed(8)})`,
+        priceSpread,
+        shortExchange,
+        longExchange,
+        shortPrice,
+        longPrice,
+        balances
+      };
+    }
+
+    if (priceSpread < MIN_ENTRY_SPREAD) {
+      console.log(`❌ ENTRY REJECTED: Spread ${priceSpread.toFixed(4)}% < ${MIN_ENTRY_SPREAD}% (minimum required)`);
+      console.log('━'.repeat(60));
+      return {
+        canTrade: false,
+        reason: `Spread too low: ${priceSpread.toFixed(4)}% < ${MIN_ENTRY_SPREAD}% minimum`,
+        priceSpread,
+        shortExchange,
+        longExchange,
+        shortPrice,
+        longPrice,
+        balances
+      };
+    }
+
+    console.log(`✅ SPREAD CHECK PASSED: ${priceSpread.toFixed(4)}% >= ${MIN_ENTRY_SPREAD}%`);
+    console.log(`   SHORT (${shortExchange}) = $${shortPrice.toFixed(8)}`);
+    console.log(`   LONG  (${longExchange}) = $${longPrice.toFixed(8)}`);
+    console.log(`   Profit Potential: ${priceSpread.toFixed(4)}%`);
+    console.log('━'.repeat(60));
+    // ============================================================
+
     // Calculate margin required (without leverage)
     const marginRequired = effectiveCapital / this.leverage;
     console.log(`\nMargin Required:  $${marginRequired.toFixed(2)} USDT`);
@@ -313,6 +372,17 @@ class PositionSizer {
       // Balances
       balances,
       minBalance,
+
+      // Spread validation details
+      spreadValidation: {
+        priceSpread: priceSpread,
+        shortExchange: shortExchange,
+        longExchange: longExchange,
+        shortPrice: shortPrice,
+        longPrice: longPrice,
+        minRequiredSpread: MIN_ENTRY_SPREAD,
+        passed: true
+      },
 
       // Breakdown by exchange
       breakdown: {
