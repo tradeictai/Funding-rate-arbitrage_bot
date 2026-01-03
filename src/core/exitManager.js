@@ -600,22 +600,44 @@ class ExitManager {
     console.log("=".repeat(60));
 
     try {
-      console.log("\n📊 Placing MARKET orders to close both positions...");
+      console.log("\n📊 Placing exit orders...");
 
-      // Place market orders on both exchanges (no price, immediate execution)
-      const [deltaExit, coindcxExit] = await Promise.all([
-        this.exitDeltaPosition(trade, trade.deltaPosition), // null = market order
-        this.exitCoinDCXPosition(trade, trade.coindcxPosition), // null = market order
-      ]);
+      // Check which positions exist
+      const hasDeltaPosition = trade.details?.deltaPosition?.size &&
+                              Math.abs(trade.details.deltaPosition.size) > 0;
+      const hasCoindcxPosition = trade.details?.coindcxPosition?.size &&
+                                Math.abs(trade.details.coindcxPosition.size) > 0;
 
-      // Check results
-      if (!deltaExit.success || !coindcxExit.success) {
-        console.error(
-          "\n❌ CRITICAL: One or more emergency exit orders failed:"
-        );
-        if (!deltaExit.success) console.error(`   Delta: ${deltaExit.error}`);
-        if (!coindcxExit.success)
-          console.error(`   Pi42: ${coindcxExit.error}`);
+      console.log(`   Delta Position: ${hasDeltaPosition ? 'Active' : 'None'}`);
+      console.log(`   CoinDCX Position: ${hasCoindcxPosition ? 'Active' : 'None'}`);
+
+      let deltaExit = { success: true, message: 'No position to exit' };
+      let coindcxExit = { success: true, message: 'No position to exit' };
+
+      // Exit Delta if position exists
+      if (hasDeltaPosition) {
+        deltaExit = await this.exitDeltaPosition(trade, trade.deltaPosition);
+      } else {
+        console.log("   ⏭️ Skipping Delta exit (no position)");
+      }
+
+      // Exit CoinDCX if position exists
+      if (hasCoindcxPosition) {
+        coindcxExit = await this.exitCoinDCXPosition(trade, trade.coindcxPosition);
+      } else {
+        console.log("   ⏭️ Skipping CoinDCX exit (no position)");
+      }
+
+      // Check if any actual exit failed
+      const hadFailure = (hasDeltaPosition && !deltaExit.success) ||
+                        (hasCoindcxPosition && !coindcxExit.success);
+
+      if (hadFailure) {
+        console.error("\n❌ CRITICAL: One or more emergency exit orders failed:");
+        if (hasDeltaPosition && !deltaExit.success)
+          console.error(`   Delta: ${deltaExit.error}`);
+        if (hasCoindcxPosition && !coindcxExit.success)
+          console.error(`   CoinDCX: ${coindcxExit.error}`);
 
         return {
           success: false,

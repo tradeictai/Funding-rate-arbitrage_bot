@@ -32,6 +32,7 @@ class TradeMonitor extends EventEmitter {
     this.minProfitThreshold = config.trading.minProfitThreshold || 0.001; // e.g. 0.01%
 
     this.flipCheckTimer = null;
+    this.positionCheckInterval = null; // For periodic one-sided position checks
 
     this.setupEventHandlers();
   }
@@ -92,6 +93,8 @@ class TradeMonitor extends EventEmitter {
       this.checkForNormalExit(); // Check flip on every Delta update
       // Check if funding time completed
     }
+
+    // Position existence is now checked periodically by interval timer
   }
 
   async handleCoindcxPosition(data) {
@@ -116,6 +119,8 @@ class TradeMonitor extends EventEmitter {
       this.performFlipCheck(); // Check flip on every Pi42 update
       this.checkForNormalExit(); // Check if funding time completed
     }
+
+    // Position existence is now checked periodically by interval timer
   }
 
   async performQuantityCheck(deltaPosition, coindcxPosition) {
@@ -256,6 +261,104 @@ class TradeMonitor extends EventEmitter {
     }
   }
 
+  /**
+   * Check if both positions are still active
+   * Trigger emergency exit if one side is missing for too long
+   */
+  async checkPositionExistence() {
+    // if (!this.activeTrade) return;
+
+    console.log("Checking for position: +++++++++")
+
+    const ONE_SIDED_TIMEOUT_MS = 30000; // 30 seconds grace period
+    const now = Date.now();
+
+    // Track when position went missing
+    if (!this.oneSidedDetectedAt) {
+      this.oneSidedDetectedAt = null;
+    }
+
+    // Check Delta position
+    const hasDeltaPosition = this.latestDeltaPosition &&
+                            Math.abs(this.latestDeltaPosition.size || 0) > 0;
+
+    // Check CoinDCX position
+    const hasCoindcxPosition = this.latestCoindcxPosition &&
+                              Math.abs(this.latestCoindcxPosition.positionAmount || 0) > 0;
+
+    console.log("\n🔍 POSITION EXISTENCE CHECK");
+    console.log("─".repeat(60));
+    console.log(`   Delta Position: ${hasDeltaPosition ? '✅ Active' : '❌ Missing'}`);
+    console.log(`   CoinDCX Position: ${hasCoindcxPosition ? '✅ Active' : '❌ Missing'}`);
+
+    // Both positions active - reset timer and return
+    if (hasDeltaPosition && hasCoindcxPosition) {
+      if (this.oneSidedDetectedAt) {
+        console.log(`   ✅ Both positions restored`);
+        this.oneSidedDetectedAt = null;
+      }
+      console.log("─".repeat(60));
+      return;
+    }
+
+    // Both positions missing - reset timer and return (nothing to monitor)
+    if (!hasDeltaPosition && !hasCoindcxPosition) {
+      if (this.oneSidedDetectedAt) {
+        console.log(`   ℹ️ Both positions closed - stopping one-sided monitor`);
+        this.oneSidedDetectedAt = null;
+      }
+      console.log("─".repeat(60));
+      return;
+    }
+
+    // One-sided detected
+    if (!this.oneSidedDetectedAt) {
+      // First detection - start timer
+      this.oneSidedDetectedAt = now;
+      console.log(`   ⚠️ One-sided position detected! Starting ${ONE_SIDED_TIMEOUT_MS/1000}s grace period...`);
+      console.log("─".repeat(60));
+      return;
+    }
+
+    // Check timeout
+    const timeSinceDetection = now - this.oneSidedDetectedAt;
+    const remainingMs = ONE_SIDED_TIMEOUT_MS - timeSinceDetection;
+
+    console.log(`   ⏱️ One-sided for ${(timeSinceDetection/1000).toFixed(0)}s / ${ONE_SIDED_TIMEOUT_MS/1000}s`);
+
+    if (timeSinceDetection >= ONE_SIDED_TIMEOUT_MS) {
+      console.log("❌ ONE-SIDED TIMEOUT → EMERGENCY EXIT");
+      console.log("─".repeat(60));
+
+      // Determine which side is active
+      const activeSide = hasDeltaPosition ? 'Delta' : 'CoinDCX';
+      const missingSide = hasDeltaPosition ? 'CoinDCX' : 'Delta';
+
+      this.emit("oneSidedPosition", {
+        activeSide,
+        missingSide,
+        timeSinceDetection: timeSinceDetection / 1000,
+        deltaPosition: this.latestDeltaPosition,
+        coindcxPosition: this.latestCoindcxPosition,
+      });
+
+      await this.emergencyExit("ONE_SIDED_POSITION", {
+        reason: `One-sided position detected: ${activeSide} active, ${missingSide} missing for ${(timeSinceDetection/1000).toFixed(0)}s`,
+        activeSide,
+        missingSide,
+        timeoutSeconds: ONE_SIDED_TIMEOUT_MS / 1000,
+        timeSinceDetection: timeSinceDetection / 1000,
+        deltaPosition: this.latestDeltaPosition,
+        coindcxPosition: this.latestCoindcxPosition,
+      });
+
+      this.oneSidedDetectedAt = null; // Reset
+    } else {
+      console.log(`   ⏳ Grace period remaining: ${(remainingMs/1000).toFixed(0)}s`);
+      console.log("─".repeat(60));
+    }
+  }
+
   checkForNormalExit() {
     if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return;
 
@@ -376,31 +479,57 @@ class TradeMonitor extends EventEmitter {
       // }
 
       // ✅ PROFIT TARGET CHECK
-      // if (totalPnL >= 0) {
-      //   console.log("\n✅ PROFIT TARGET REACHED → EXECUTING NORMAL EXIT");
-      //   console.log(`   Combined P&L: $${totalPnL.toFixed(4)} > $0.10`);
+      if (totalPnL >= 0) {
+        console.log("\n✅ PROFIT TARGET REACHED → EXECUTING NORMAL EXIT");
+        console.log(`   Combined P&L: $${totalPnL.toFixed(4)} > $0.10`);
 
-      //   const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
-      //   const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-      //   const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
+        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+        const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+        const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
-      //   this.emergencyExit("PROFIT_EXIT", {
-      //     reason: "Profit target reached after funding",
-      //     totalPnL: totalPnL,
-      //     deltaPnL: deltaPnL,
-      //     coindcxPnL: coindcxPnL,
-      //     fundingTime: this.lockedFundingTime,
-      //     fundingConfirmedAt: this.fundingConfirmedAt,
-      //     timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
-      //     deltaFR: deltaFRData ? deltaFRData.rate : null,
-      //     coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
-      //     deltaPosition: this.latestDeltaPosition,
-      //     coindcxPosition: this.latestCoindcxPosition,
-      //   });
+        this.emergencyExit("PROFIT_EXIT", {
+          reason: "Profit target reached after funding",
+          totalPnL: totalPnL,
+          deltaPnL: deltaPnL,
+          coindcxPnL: coindcxPnL,
+          fundingTime: this.lockedFundingTime,
+          fundingConfirmedAt: this.fundingConfirmedAt,
+          timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
+          deltaFR: deltaFRData ? deltaFRData.rate : null,
+          coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
+          deltaPosition: this.latestDeltaPosition,
+          coindcxPosition: this.latestCoindcxPosition,
+        });
 
-      //   this.resetFundingState();
-      //   return;
-      // }
+        this.resetFundingState();
+        return;
+      }
+
+      if (deltaPnL >= 0  && coindcxPnL >=0) {
+        console.log("\n✅ PROFIT TARGET REACHED → EXECUTING NORMAL EXIT");
+        console.log(`   Combined P&L: $${totalPnL.toFixed(4)} > $0.10`);
+
+        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+        const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+        const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
+
+        this.emergencyExit("PROFIT_EXIT", {
+          reason: "Profit target reached after funding",
+          totalPnL: totalPnL,
+          deltaPnL: deltaPnL,
+          coindcxPnL: coindcxPnL,
+          fundingTime: this.lockedFundingTime,
+          fundingConfirmedAt: this.fundingConfirmedAt,
+          timeSinceLockedFunding: (timeSinceLockedFunding / 1000).toFixed(0),
+          deltaFR: deltaFRData ? deltaFRData.rate : null,
+          coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
+          deltaPosition: this.latestDeltaPosition,
+          coindcxPosition: this.latestCoindcxPosition,
+        });
+
+        this.resetFundingState();
+        return;
+      }
 
     } else {
       console.log("Waiting for timing exit....")
@@ -470,6 +599,7 @@ class TradeMonitor extends EventEmitter {
     this.lockedFundingTime = null;
     this.lastRealizedFunding = null;
     this.fundingConfirmedAt = null;
+    this.oneSidedDetectedAt = null;
   }
 
   calculateCoindcxUnrealizedPnL(position) {
@@ -543,6 +673,7 @@ class TradeMonitor extends EventEmitter {
     this.activeTrade = null;
     this.latestDeltaPosition = null;
     this.latestCoindcxPosition = null;
+    this.oneSidedDetectedAt = null;
   }
 
   async start() {
@@ -552,14 +683,26 @@ class TradeMonitor extends EventEmitter {
     this.deltaMonitor.connect();
     await this.coindcxMonitor.connect();
 
+    // Start periodic position existence check (every 5 seconds)
+    this.positionCheckInterval = setInterval(async () => {
+      await this.checkPositionExistence();
+    }, 5000); // Check every 5 seconds
+
     console.log(
-      "✅ Monitor active: Quantity + Flip + Normal Exit protection enabled"
+      "✅ Monitor active: Quantity + Flip + Normal Exit + One-Sided protection enabled"
     );
     console.log("=".repeat(60));
   }
 
   stop() {
     console.log("\n🛑 Stopping Trade Monitor...");
+
+    // Clear periodic position check
+    if (this.positionCheckInterval) {
+      clearInterval(this.positionCheckInterval);
+      this.positionCheckInterval = null;
+    }
+
     this.deltaMonitor.disconnect();
     this.coindcxMonitor.disconnect();
     this.unregisterTrade();

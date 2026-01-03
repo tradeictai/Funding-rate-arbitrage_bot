@@ -875,63 +875,107 @@ class ArbitrageEngine extends EventEmitter {
       console.log('\n🚨 PHASE 5: EXECUTING EMERGENCY EXIT', exitData);
       console.log('='.repeat(60));
 
-      // if (!this.activeTrade) {
-      //   console.error('❌ No active trade to exit');
-      //   return;
-      // }
+      // CHECK WHICH POSITIONS EXIST
+      const hasDeltaPosition = exitData.details?.deltaPosition &&
+                              exitData.details.deltaPosition.size &&
+                              Math.abs(exitData.details.deltaPosition.size) > 0;
 
-      // Get current positions from both exchanges
+      const hasCoindcxPosition = exitData.details?.coindcxPosition &&
+                                exitData.details.coindcxPosition.size &&
+                                Math.abs(exitData.details.coindcxPosition.size) > 0;
 
-      console.log("---------------------------Trading Price Calculation Start---------------------------", exitData
-      );
-      const deltaOrderbookRaw = await deltaAPI.getOrderbook(exitData.details.deltaPosition.product_symbol, this.orderbookDepth);
+      console.log('\n📊 POSITION STATUS:');
+      console.log(`   Delta: ${hasDeltaPosition ? '✅ Active' : '❌ Missing/Closed'}`);
+      console.log(`   CoinDCX: ${hasCoindcxPosition ? '✅ Active' : '❌ Missing/Closed'}`);
+      console.log('='.repeat(60));
 
-      const deltaOrderbook = positionSizer.normalizeOrderbook(deltaOrderbookRaw, 'delta');
-      console.log(`   Delta Orderbook: ${JSON.stringify(deltaOrderbook)}`);
-      const deltaSide = exitData.details.deltaPosition.side === 'LONG' ? 'sell' : 'buy';
-
-      console.log(`   Delta Side: ${deltaSide}`);
-      console.log(`   Delta Quantity: ${exitData.details.deltaPosition.size * exitData.details.deltaPosition.product.contract_value}`);
-      const deltaTPResult = positionSizer.calculateTradingPriceFromOrderbook(deltaOrderbook, deltaSide, exitData.details.deltaPosition.size * exitData.details.deltaPosition.product.contract_value);
-      console.log('---------------------------Trading Price Calculation Start---------------------------');
-
-
-      console.log(`\nStep 4: Fetching Coindcx orderbook...`);
-      // const convertedSymbol = `B-${exitData.details.coindcxPosition.pair.replace(/(USDT)$/, "_$1")}`;
-      // console.log("converted symbol", convertedSymbol)
-      const coindcxOrderbookRaw = await coindcxAPI.getOrderbook(exitData.details.coindcxPosition.pair, this.orderbookDepth);
-
-      console.log("refwewefwef", coindcxOrderbookRaw)
-      const coindcxOrderbook = positionSizer.normalizeOrderbook(coindcxOrderbookRaw, 'coindcx');
-
-      console.log("erfewrwefwe", coindcxOrderbook)
-      const coindcxSide = exitData.details.coindcxPosition.positionType === 'SHORT' ? 'buy' : 'sell';
-      const coindcxTPResult = positionSizer.calculateTradingPriceFromOrderbook(coindcxOrderbook, coindcxSide, exitData.details.coindcxPosition.size);
-      console.log("coinDedrfwae", coindcxTPResult)
-
-
-
-
-      const deltaPosition = deltaTPResult.tradingPrice
-      const coindcxPosition = coindcxTPResult.tradingPrice
-
-
-      console.log('---------------------------Trading Price Calculation End---------------------------');
-      console.log(`   Delta Trading Price: ${deltaPosition}`);
-      console.log(`   Coindcx Trading Price: ${coindcxPosition}`);
-      console.log('-----------------------------------------------------------------------------------');
-
-      exitData.deltaPosition = deltaPosition;
-      exitData.coindcxPosition = coindcxPosition;
-
-      //---------------------------Trading Price Calculation End---------------------------//
-
-      if (!deltaPosition || !coindcxPosition) {
-        console.error('❌ Could not retrieve positions for exit');
-        console.error(`   Delta Position: ${deltaPosition ? 'Found' : 'NOT FOUND'}`);
-        console.error(`   COindcx Position: ${coindcxPosition ? 'Found' : 'NOT FOUND'}`);
+      // HANDLE CASE WHERE BOTH ARE MISSING
+      if (!hasDeltaPosition && !hasCoindcxPosition) {
+        console.log('⚠️ Both positions are closed/missing. Nothing to exit.');
+        this.tradeMonitor.unregisterTrade();
+        this.activeTrade = null;
         return;
       }
+
+      let deltaPosition = null;
+      let coindcxPosition = null;
+
+      // FETCH DELTA ORDERBOOK ONLY IF POSITION EXISTS
+      if (hasDeltaPosition) {
+        try {
+          console.log('\n---------------------------Trading Price Calculation (Delta)---------------------------');
+          const deltaOrderbookRaw = await deltaAPI.getOrderbook(
+            exitData.details.deltaPosition.product_symbol,
+            this.orderbookDepth
+          );
+
+          const deltaOrderbook = positionSizer.normalizeOrderbook(deltaOrderbookRaw, 'delta');
+          console.log(`   Delta Orderbook: ${JSON.stringify(deltaOrderbook)}`);
+
+          const deltaSide = exitData.details.deltaPosition.side === 'LONG' ? 'sell' : 'buy';
+          console.log(`   Delta Side: ${deltaSide}`);
+          console.log(`   Delta Quantity: ${exitData.details.deltaPosition.size * exitData.details.deltaPosition.product.contract_value}`);
+
+          const deltaTPResult = positionSizer.calculateTradingPriceFromOrderbook(
+            deltaOrderbook,
+            deltaSide,
+            exitData.details.deltaPosition.size * exitData.details.deltaPosition.product.contract_value
+          );
+
+          deltaPosition = deltaTPResult.tradingPrice;
+          console.log(`   Delta Trading Price: ${deltaPosition}`);
+          console.log('-----------------------------------------------------------------------------------');
+        } catch (error) {
+          console.error(`❌ Error calculating Delta exit price: ${error.message}`);
+          // Set to null, will try market order in exitManager
+          deltaPosition = null;
+        }
+      } else {
+        console.log('\n⏭️ Skipping Delta orderbook fetch (no position)');
+      }
+
+      // FETCH COINDCX ORDERBOOK ONLY IF POSITION EXISTS
+      if (hasCoindcxPosition) {
+        try {
+          console.log('\n---------------------------Trading Price Calculation (CoinDCX)---------------------------');
+          const coindcxOrderbookRaw = await coindcxAPI.getOrderbook(
+            exitData.details.coindcxPosition.pair,
+            this.orderbookDepth
+          );
+
+          console.log("CoinDCX orderbook raw:", coindcxOrderbookRaw);
+          const coindcxOrderbook = positionSizer.normalizeOrderbook(coindcxOrderbookRaw, 'coindcx');
+
+          console.log("CoinDCX orderbook normalized:", coindcxOrderbook);
+          const coindcxSide = exitData.details.coindcxPosition.positionType === 'SHORT' ? 'buy' : 'sell';
+
+          const coindcxTPResult = positionSizer.calculateTradingPriceFromOrderbook(
+            coindcxOrderbook,
+            coindcxSide,
+            exitData.details.coindcxPosition.size
+          );
+
+          coindcxPosition = coindcxTPResult.tradingPrice;
+          console.log(`   CoinDCX Trading Price: ${coindcxPosition}`);
+          console.log('-----------------------------------------------------------------------------------');
+        } catch (error) {
+          console.error(`❌ Error calculating CoinDCX exit price: ${error.message}`);
+          // Set to null, will try market order in exitManager
+          coindcxPosition = null;
+        }
+      } else {
+        console.log('\n⏭️ Skipping CoinDCX orderbook fetch (no position)');
+      }
+
+      // SUMMARY
+      console.log('\n=========================== EXIT SUMMARY ===========================');
+      console.log(`   Delta Position: ${hasDeltaPosition ? (deltaPosition ? `✅ Exit Price: $${deltaPosition}` : '⚠️ Will use market order') : '⏭️ No position'}`);
+      console.log(`   CoinDCX Position: ${hasCoindcxPosition ? (coindcxPosition ? `✅ Exit Price: $${coindcxPosition}` : '⚠️ Will use market order') : '⏭️ No position'}`);
+      console.log('====================================================================');
+
+      // Set exit data
+      exitData.deltaPosition = deltaPosition;
+      exitData.coindcxPosition = coindcxPosition;
 
       // Execute emergency exit using Exit Manager
       const exitResult = await exitManager.executeEmergencyExit(
@@ -946,11 +990,14 @@ class ArbitrageEngine extends EventEmitter {
 
       // Log results
       if (exitResult.success) {
-
         this.resetPositionLock();
         console.log('\n✅ EMERGENCY EXIT COMPLETED SUCCESSFULLY');
-        console.log(`   Delta Order ID: ${exitResult.deltaExit.orderId}`);
-        console.log(`   Coindcx Order ID: ${exitResult.coindcxExit.orderId}`);
+        if (hasDeltaPosition && exitResult.deltaExit?.orderId) {
+          console.log(`   Delta Order ID: ${exitResult.deltaExit.orderId}`);
+        }
+        if (hasCoindcxPosition && exitResult.coindcxExit?.orderId) {
+          console.log(`   CoinDCX Order ID: ${exitResult.coindcxExit.orderId}`);
+        }
       } else {
         console.error('\n❌ EMERGENCY EXIT FAILED');
         console.error(`   Stage: ${exitResult.stage}`);
