@@ -1,4 +1,5 @@
 import { MongoClient } from 'mongodb';
+import mongoose from 'mongoose';
 import config from '../config/config.js';
 
 /**
@@ -9,6 +10,7 @@ class MongoService {
     this.client = null;
     this.db = null;
     this.isConnected = false;
+    this.mongooseConnected = false;
 
     // Collection names
     this.collections = {
@@ -25,6 +27,7 @@ class MongoService {
    */
   async connect() {
     try {
+      // Connect using native MongoDB driver for regular operations
       this.client = new MongoClient(config.mongodb.uri, {
         maxPoolSize: 10,
         minPoolSize: 2
@@ -34,12 +37,61 @@ class MongoService {
       this.db = this.client.db(config.mongodb.dbName);
       this.isConnected = true;
 
-      console.log('✅ Connected to MongoDB');
+      console.log('✅ Connected to MongoDB (Native Driver)');
+
+      // Also connect using Mongoose for model-based operations (like TPTracker)
+      await this.connectMongoose();
 
       // Create indexes for better query performance
       await this.createIndexes();
     } catch (error) {
       console.error('Failed to connect to MongoDB:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Connect to MongoDB using Mongoose
+   * This is required for Mongoose models like TPTracker
+   */
+  async connectMongoose() {
+    try {
+      // Avoid multiple connections
+      if (mongoose.connection.readyState === 1) {
+        console.log('✅ Mongoose already connected');
+        this.mongooseConnected = true;
+        return;
+      }
+
+      await mongoose.connect(config.mongodb.uri, {
+        dbName: config.mongodb.dbName,
+        serverSelectionTimeoutMS: 10000,
+        maxPoolSize: 10,
+        minPoolSize: 2
+      });
+
+      this.mongooseConnected = true;
+      console.log('✅ Connected to MongoDB (Mongoose)');
+
+      // Handle connection events
+      mongoose.connection.on('error', (err) => {
+        console.error('❌ Mongoose connection error:', err);
+        this.mongooseConnected = false;
+      });
+
+      mongoose.connection.on('disconnected', () => {
+        console.warn('⚠️ Mongoose disconnected');
+        this.mongooseConnected = false;
+      });
+
+      mongoose.connection.on('reconnected', () => {
+        console.log('✅ Mongoose reconnected');
+        this.mongooseConnected = true;
+      });
+
+    } catch (error) {
+      console.error('❌ Failed to connect Mongoose:', error.message);
+      this.mongooseConnected = false;
       throw error;
     }
   }
@@ -376,10 +428,18 @@ class MongoService {
    * Disconnect from MongoDB
    */
   async disconnect() {
+    // Disconnect native MongoDB driver
     if (this.client) {
       await this.client.close();
       this.isConnected = false;
-      console.log('🔌 Disconnected from MongoDB');
+      console.log('🔌 Disconnected from MongoDB (Native Driver)');
+    }
+
+    // Disconnect Mongoose
+    if (this.mongooseConnected && mongoose.connection.readyState === 1) {
+      await mongoose.disconnect();
+      this.mongooseConnected = false;
+      console.log('🔌 Disconnected from MongoDB (Mongoose)');
     }
   }
 
@@ -388,7 +448,7 @@ class MongoService {
    * @returns {boolean}
    */
   isActive() {
-    return this.isConnected;
+    return this.isConnected && this.mongooseConnected;
   }
 }
 

@@ -97,7 +97,7 @@ async function main() {
     // START REST API SERVER FOR CONFIG MANAGEMENT
     // ========================================
     console.log("🚀 Starting REST API server for configuration...");
-    const apiServer = new APIServer(5004);
+    const apiServer = new APIServer(5002);
     await apiServer.start();
     console.log("✅ REST API available at http://localhost:5004\n");
 

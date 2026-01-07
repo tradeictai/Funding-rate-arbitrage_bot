@@ -5,6 +5,7 @@ import symbolMapper from '../utils/symbolMapper.js';
 import redisService from '../services/redisService.js';
 import mongoService from '../services/mongoService.js';
 import config from '../config/config.js';
+import tpTrackerService from '../services/tpTrackerService.js';
 
 // Phase 2 imports
 import positionSizer from './positionSizer.js';
@@ -539,6 +540,30 @@ class ArbitrageEngine extends EventEmitter {
     if (this.phase2Enabled) {
       const phase2Result = await this.evaluatePhase2(opportunity);
 
+      // 🎯 SAVE TP TO MONGODB (even if trade rejected)
+      if (phase2Result.positionSize && phase2Result.positionSize.tp) {
+        try {
+          await tpTrackerService.saveTP({
+            token: opportunity.token,
+            deltaSymbol: opportunity.token,
+            coindcxSymbol: opportunity.binanceSymbol,
+            deltaTP: phase2Result.positionSize.tp.deltaTP,
+            coindcxTP: phase2Result.positionSize.tp.coindcxTP,
+            deltaSide: phase2Result.positionSize.tp.deltaSide,
+            coindcxSide: phase2Result.positionSize.tp.coindcxSide,
+            fundingDiff: opportunity.fundingDiff,
+            spreadPercent: phase2Result.positionSize.spreadValidation?.priceSpread,
+            nextFundingTime: opportunity.FT_binance,
+            timeToFundingMs: opportunity.timeToFundingMs,
+            status: phase2Result.canExecute ? 'active' : 'rejected',
+            rejectionReason: phase2Result.canExecute ? null : phase2Result.reason
+          });
+          console.log(`✅ TP saved to MongoDB for frontend display`);
+        } catch (error) {
+          console.error(`⚠️ Failed to save TP to MongoDB:`, error.message);
+        }
+      }
+
       if (!phase2Result.canExecute) {
         console.log(`\n❌ PHASE 2: Opportunity rejected - ${phase2Result.reason}\n`);
 
@@ -613,6 +638,14 @@ class ArbitrageEngine extends EventEmitter {
 
           if (executionResult.success) {
             console.log('\n✅ PHASE 3: Orders executed successfully on both exchanges!');
+
+            // 🎯 MARK TP AS EXECUTED IN MONGODB
+            try {
+              await tpTrackerService.markAsExecuted(opportunity.token);
+              console.log(`✅ TP marked as executed in MongoDB`);
+            } catch (error) {
+              console.error(`⚠️ Failed to mark TP as executed:`, error.message);
+            }
 
             // Update cooldown timer
             this.lastTradeExecutionTime = Date.now();

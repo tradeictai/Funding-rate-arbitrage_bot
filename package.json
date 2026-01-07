@@ -25,6 +25,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.18.2",
     "mongodb": "^6.10.0",
+    "mongoose": "^9.1.1",
     "redis": "^4.7.0",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",

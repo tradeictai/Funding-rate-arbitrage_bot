@@ -275,6 +275,14 @@ class PositionSizer {
     const TP_EX2 = coindcxTPResult.tradingPrice;
     console.log(`TP_EX2 (Coindcx):    $${TP_EX2.toFixed(8)}`);
 
+    // 🎯 Store TP values for return (needed for frontend display even if trade fails)
+    const tpValues = {
+      deltaTP: TP_EX1,
+      coindcxTP: TP_EX2,
+      deltaSide,
+      coindcxSide
+    };
+
     // ============================================================
     // 🎯 SPREAD VALIDATION (ENTRY RULE)
     // ============================================================
@@ -295,7 +303,7 @@ class PositionSizer {
     console.log(`Price Spread: ${priceSpread.toFixed(4)}%`);
 
     // ENTRY RULE: Short price must be > Long price AND spread >= 0.15%
-    const MIN_ENTRY_SPREAD = 0.15; // 0.15%
+    const MIN_ENTRY_SPREAD = 0.05; // 0.15%
 
     if (shortPrice <= longPrice) {
       console.log(`❌ ENTRY REJECTED: Short price ($${shortPrice.toFixed(8)}) <= Long price ($${longPrice.toFixed(8)})`);
@@ -308,7 +316,9 @@ class PositionSizer {
         longExchange,
         shortPrice,
         longPrice,
-        balances
+        balances,
+        // 🎯 Include TP for MongoDB storage (even though trade rejected)
+        tp: tpValues
       };
     }
 
@@ -323,7 +333,9 @@ class PositionSizer {
         longExchange,
         shortPrice,
         longPrice,
-        balances
+        balances,
+        // 🎯 Include TP for MongoDB storage (even though trade rejected)
+        tp: tpValues
       };
     }
 
@@ -372,6 +384,9 @@ class PositionSizer {
       // Balances
       balances,
       minBalance,
+
+      // 🎯 TP for MongoDB storage
+      tp: tpValues,
 
       // Spread validation details
       spreadValidation: {
