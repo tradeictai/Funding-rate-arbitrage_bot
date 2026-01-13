@@ -182,85 +182,85 @@ class TradeMonitor extends EventEmitter {
   }
 
   performFlipCheck() {
-    if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return;
-    //  console.log('\n🔍 Performing Flip Safety Check...', this.latestDeltaPosition);
-    const deltaSymbol = this.latestDeltaPosition.product_symbol;
-    const coindcxSymbol =
-      this.latestCoindcxPosition.symbol ||
-      this.latestCoindcxPosition.contractPair;
+    // if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return;
+    // //  console.log('\n🔍 Performing Flip Safety Check...', this.latestDeltaPosition);
+    // const deltaSymbol = this.latestDeltaPosition.product_symbol;
+    // const coindcxSymbol =
+    //   this.latestCoindcxPosition.symbol ||
+    //   this.latestCoindcxPosition.contractPair;
 
-    const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-    const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
+    // const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+    // const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
-    if (!deltaFRData || !coindcxFRData) {
-      console.log("⏳ Waiting for both funding rates...");
-      console.log(
-        `   Delta symbol: ${deltaSymbol} - FR: ${deltaFRData ? "Found" : "NOT FOUND"
-        }`
-      );
-      console.log(
-        `   Coindcx symbol: ${coindcxSymbol} - FR: ${coindcxFRData ? "Found" : "NOT FOUND"
-        }`
-      );
-      return;
-    }
+    // if (!deltaFRData || !coindcxFRData) {
+    //   console.log("⏳ Waiting for both funding rates...");
+    //   console.log(
+    //     `   Delta symbol: ${deltaSymbol} - FR: ${deltaFRData ? "Found" : "NOT FOUND"
+    //     }`
+    //   );
+    //   console.log(
+    //     `   Coindcx symbol: ${coindcxSymbol} - FR: ${coindcxFRData ? "Found" : "NOT FOUND"
+    //     }`
+    //   );
+    //   return;
+    // }
 
-    // Both rates are stored as decimals, convert to percentage
-    const FR_delta = deltaFRData.rate;
-    const FR_coindcx = coindcxFRData.rate;
+    // // Both rates are stored as decimals, convert to percentage
+    // const FR_delta = deltaFRData.rate;
+    // const FR_coindcx = coindcxFRData.rate;
 
-    console.log("\n🔄 FLIP SAFETY CHECK");
-    console.log("─".repeat(60));
-    console.log(`Delta FR:  ${FR_delta.toFixed(4)}%`);
-    console.log(`Coindcx FR:   ${FR_coindcx.toFixed(4)}%`);
+    // console.log("\n🔄 FLIP SAFETY CHECK");
+    // console.log("─".repeat(60));
+    // console.log(`Delta FR:  ${FR_delta.toFixed(4)}%`);
+    // console.log(`Coindcx FR:   ${FR_coindcx.toFixed(4)}%`);
 
-    let FR_first, FR_second, exchange_first, exchange_second;
+    // let FR_first, FR_second, exchange_first, exchange_second;
 
-    if (Math.abs(FR_delta) >= Math.abs(FR_coindcx)) {
-      FR_first = FR_delta;
-      FR_second = FR_coindcx;
-      exchange_first = "Delta";
-      exchange_second = "Coindcx";
-    } else {
-      FR_first = FR_coindcx;
-      FR_second = FR_delta;
-      exchange_first = "Coindcx";
-      exchange_second = "Delta";
-    }
+    // if (Math.abs(FR_delta) >= Math.abs(FR_coindcx)) {
+    //   FR_first = FR_delta;
+    //   FR_second = FR_coindcx;
+    //   exchange_first = "Delta";
+    //   exchange_second = "Coindcx";
+    // } else {
+    //   FR_first = FR_coindcx;
+    //   FR_second = FR_delta;
+    //   exchange_first = "Coindcx";
+    //   exchange_second = "Delta";
+    // }
 
-    const diff = this.calculateFundingDifference(FR_first, FR_second);
+    // const diff = this.calculateFundingDifference(FR_first, FR_second);
 
-    console.log(
-      `Funding Rate Diff (${exchange_first} - ${exchange_second}): ${diff.toFixed(
-        4
-      )}%`
-    );
-    console.log(`Threshold: ${this.minProfitThreshold * 100}%`);
+    // console.log(
+    //   `Funding Rate Diff (${exchange_first} - ${exchange_second}): ${diff.toFixed(
+    //     4
+    //   )}%`
+    // );
+    // console.log(`Threshold: ${this.minProfitThreshold * 100}%`);
 
-    if (diff < this.minProfitThreshold * 100) {
-      console.log("❌ FLIP DETECTED → EMERGENCY EXIT");
-      console.log("─".repeat(60));
+    // if (diff < this.minProfitThreshold * 100) {
+    //   console.log("❌ FLIP DETECTED → EMERGENCY EXIT");
+    //   console.log("─".repeat(60));
 
-      this.emit("flip", {
-        diff,
-        threshold: this.minProfitThreshold * 100,
-        FR_delta,
-        FR_coindcx,
-      });
+    //   this.emit("flip", {
+    //     diff,
+    //     threshold: this.minProfitThreshold * 100,
+    //     FR_delta,
+    //     FR_coindcx,
+    //   });
 
-      this.emergencyExit("FLIP_DETECTED", {
-        reason: `Funding profit dropped to ${diff.toFixed(4)}% < threshold ${this.minProfitThreshold * 100
-          }%`,
-        currentDiff: diff,
-        deltaFR: FR_delta,
-        coindcxFR: FR_coindcx,
-        deltaPosition: this.latestDeltaPosition,
-        coindcxPosition: this.latestCoindcxPosition,
-      });
-    } else {
-      console.log(`✅ Flip safe: ${diff.toFixed(4)}% profit remains`);
-      console.log("─".repeat(60));
-    }
+    //   this.emergencyExit("FLIP_DETECTED", {
+    //     reason: `Funding profit dropped to ${diff.toFixed(4)}% < threshold ${this.minProfitThreshold * 100
+    //       }%`,
+    //     currentDiff: diff,
+    //     deltaFR: FR_delta,
+    //     coindcxFR: FR_coindcx,
+    //     deltaPosition: this.latestDeltaPosition,
+    //     coindcxPosition: this.latestCoindcxPosition,
+    //   });
+    // } else {
+    //   console.log(`✅ Flip safe: ${diff.toFixed(4)}% profit remains`);
+    //   console.log("─".repeat(60));
+    // }
   }
 
   /**
@@ -272,7 +272,7 @@ class TradeMonitor extends EventEmitter {
 
     console.log("Checking for position: +++++++++")
 
-    const ONE_SIDED_TIMEOUT_MS = 30000; // 30 seconds grace period
+    const ONE_SIDED_TIMEOUT_MS = 60000; // 30 seconds grace period
     const now = Date.now();
 
     // Track when position went missing
@@ -395,6 +395,55 @@ checkForNormalExit() {
       console.log(`   CoinDCX Entry Price: $${coindcxMarkPrice.toFixed(8)}\n`);
     }
 
+
+
+    if (deltaMarkPrice && coindcxMarkPrice) {
+      const priceDifference = coindcxMarkPrice - deltaMarkPrice;
+      const currentSpread = Math.abs(priceDifference / deltaMarkPrice) * 100;
+
+      console.log('\n📊 SPREAD MONITORING (Post-Funding)');
+      console.log('━'.repeat(60));
+      console.log(`   Delta Mark Price:   $${deltaMarkPrice.toFixed(8)}`);
+      console.log(`   CoinDCX Mark Price: $${coindcxMarkPrice.toFixed(8)}`);
+      console.log(`   Price Difference:   $${priceDifference.toFixed(8)} (${priceDifference >= 0 ? '+' : ''}${((priceDifference / deltaMarkPrice) * 100).toFixed(4)}%)`);
+      console.log(`   Current Spread:     ${currentSpread.toFixed(4)}%`);
+
+      const EXIT_SPREAD_TARGET = 0.05; // 0.05%
+
+      if (currentSpread <= EXIT_SPREAD_TARGET) {
+        console.log(`\n✅ SPREAD CONVERGENCE DETECTED (After Funding)!`);
+        console.log(`   Target: ≤ ${EXIT_SPREAD_TARGET}%`);
+        console.log(`   Actual: ${currentSpread.toFixed(4)}%`);
+        console.log(`   Time since funding: ${(timeSinceLockedFunding / 1000).toFixed(0)}s`);
+        console.log(`   → Triggering EXIT`);
+        console.log('━'.repeat(60));
+
+        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+        const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+        const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
+
+        this.emergencyExit("SPREAD_CONVERGENCE", {
+          reason: `Spread converged to ${currentSpread.toFixed(4)}% after funding (target: ${EXIT_SPREAD_TARGET}%)`,
+          currentSpread: currentSpread,
+          targetSpread: EXIT_SPREAD_TARGET,
+          deltaMarkPrice: deltaMarkPrice,
+          coindcxMarkPrice: coindcxMarkPrice,
+          priceDifference: priceDifference,
+          timeSinceFunding: (timeSinceLockedFunding / 1000).toFixed(0),
+          deltaFR: deltaFRData ? deltaFRData.rate : null,
+          coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
+          deltaPosition: this.latestDeltaPosition,
+          coindcxPosition: this.latestCoindcxPosition,
+        });
+
+        this.resetFundingState();
+        return;
+      }
+
+      console.log(`   Status: Spread ${currentSpread.toFixed(4)}% > ${EXIT_SPREAD_TARGET}% → Continue monitoring`);
+      console.log('━'.repeat(60));
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // 🛑 PRIORITY 1: STOP LOSS (ALWAYS ACTIVE - Most Critical)
     // Exit if spread moved adverse by 0.30% from entry
@@ -443,40 +492,40 @@ checkForNormalExit() {
     // ⏰ PRIORITY 2: MAXIMUM HOLD TIME (ALWAYS ACTIVE - 4 hours)
     // NOTE: This runs BEFORE and AFTER funding time - it's a safety net
     // ═══════════════════════════════════════════════════════════════════
-    if (this.activeTrade && this.activeTrade.entryTime) {
-      const timeInTrade = now - this.activeTrade.entryTime;
-      const MAX_HOLD_TIME = 4 * 60 * 60 * 1000; // 4 hours
+    // if (this.activeTrade && this.activeTrade.entryTime) {
+    //   const timeInTrade = now - this.activeTrade.entryTime;
+    //   const MAX_HOLD_TIME = 4 * 60 * 60 * 1000; // 4 hours
 
-      if (timeInTrade > MAX_HOLD_TIME) {
-        console.log('\n⏰⏰⏰ MAXIMUM HOLD TIME EXCEEDED ⏰⏰⏰');
-        console.log('='.repeat(60));
-        console.log(`   ⚠️  SAFETY EXIT - Active at ALL times`);
-        console.log(`   Entry Time: ${new Date(this.activeTrade.entryTime).toLocaleString('en-IN')}`);
-        console.log(`   Current Time: ${new Date(now).toLocaleString('en-IN')}`);
-        console.log(`   Time in Trade: ${(timeInTrade / 3600000).toFixed(2)} hours`);
-        console.log(`   Max Allowed: 4 hours`);
-        console.log(`   → FORCING EXIT`);
-        console.log('='.repeat(60));
+    //   if (timeInTrade > MAX_HOLD_TIME) {
+    //     console.log('\n⏰⏰⏰ MAXIMUM HOLD TIME EXCEEDED ⏰⏰⏰');
+    //     console.log('='.repeat(60));
+    //     console.log(`   ⚠️  SAFETY EXIT - Active at ALL times`);
+    //     console.log(`   Entry Time: ${new Date(this.activeTrade.entryTime).toLocaleString('en-IN')}`);
+    //     console.log(`   Current Time: ${new Date(now).toLocaleString('en-IN')}`);
+    //     console.log(`   Time in Trade: ${(timeInTrade / 3600000).toFixed(2)} hours`);
+    //     console.log(`   Max Allowed: 4 hours`);
+    //     console.log(`   → FORCING EXIT`);
+    //     console.log('='.repeat(60));
 
-        const deltaSymbol = this.latestDeltaPosition.product_symbol;
-        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
-        const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-        const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
+    //     const deltaSymbol = this.latestDeltaPosition.product_symbol;
+    //     const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+    //     const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+    //     const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
-        this.emergencyExit("MAX_HOLD_TIME", {
-          reason: `Maximum hold time (4 hours) exceeded`,
-          timeInTrade: (timeInTrade / 3600000).toFixed(2),
-          entryTime: this.activeTrade.entryTime,
-          deltaFR: deltaFRData ? deltaFRData.rate : null,
-          coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
-          deltaPosition: this.latestDeltaPosition,
-          coindcxPosition: this.latestCoindcxPosition,
-        });
+    //     this.emergencyExit("MAX_HOLD_TIME", {
+    //       reason: `Maximum hold time (4 hours) exceeded`,
+    //       timeInTrade: (timeInTrade / 3600000).toFixed(2),
+    //       entryTime: this.activeTrade.entryTime,
+    //       deltaFR: deltaFRData ? deltaFRData.rate : null,
+    //       coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
+    //       deltaPosition: this.latestDeltaPosition,
+    //       coindcxPosition: this.latestCoindcxPosition,
+    //     });
 
-        this.resetFundingState();
-        return;
-      }
-    }
+    //     this.resetFundingState();
+    //     return;
+    //   }
+    // }
 
     // ═══════════════════════════════════════════════════════════════════
     // 📅 STEP 3: GET FUNDING TIME INFO & WAIT FOR FUNDING
@@ -761,34 +810,34 @@ checkForNormalExit() {
     // ═══════════════════════════════════════════════════════════════════
     // ⏱️ PRIORITY 6: TIMEOUT EXIT (60 min post-funding)
     // ═══════════════════════════════════════════════════════════════════
-    if (timeSinceLockedFunding >= MAX_WAIT_AFTER_FUNDING_MS) {
-      console.log("\n⚠️ EMERGENCY TIMEOUT → FORCING EXIT");
-      console.log(`   Funding time: ${new Date(this.lockedFundingTime).toLocaleString("en-IN")}`);
-      console.log(`   Time elapsed: ${(timeSinceLockedFunding / 60000).toFixed(1)} minutes`);
-      console.log(`   Current P&L: $${totalPnL.toFixed(4)}`);
-      console.log(`   → Maximum wait time (${MAX_WAIT_AFTER_FUNDING_MS/60000} minutes) exceeded`);
+    // if (timeSinceLockedFunding >= MAX_WAIT_AFTER_FUNDING_MS) {
+    //   console.log("\n⚠️ EMERGENCY TIMEOUT → FORCING EXIT");
+    //   console.log(`   Funding time: ${new Date(this.lockedFundingTime).toLocaleString("en-IN")}`);
+    //   console.log(`   Time elapsed: ${(timeSinceLockedFunding / 60000).toFixed(1)} minutes`);
+    //   console.log(`   Current P&L: $${totalPnL.toFixed(4)}`);
+    //   console.log(`   → Maximum wait time (${MAX_WAIT_AFTER_FUNDING_MS/60000} minutes) exceeded`);
 
-      const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
-      const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-      const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
+    //   const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+    //   const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+    //   const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
-      this.emergencyExit("TIMEOUT_EXIT", {
-        reason: `Emergency timeout: ${(MAX_WAIT_AFTER_FUNDING_MS/60000)} minutes after funding without profit target`,
-        totalPnL: totalPnL,
-        deltaPnL: deltaPnL,
-        coindcxPnL: coindcxPnL,
-        fundingTime: this.lockedFundingTime,
-        fundingConfirmedAt: this.fundingConfirmedAt,
-        timeSinceLockedFunding: (timeSinceLockedFunding / 60000).toFixed(1),
-        deltaFR: deltaFRData ? deltaFRData.rate : null,
-        coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
-        deltaPosition: this.latestDeltaPosition,
-        coindcxPosition: this.latestCoindcxPosition,
-      });
+    //   this.emergencyExit("TIMEOUT_EXIT", {
+    //     reason: `Emergency timeout: ${(MAX_WAIT_AFTER_FUNDING_MS/60000)} minutes after funding without profit target`,
+    //     totalPnL: totalPnL,
+    //     deltaPnL: deltaPnL,
+    //     coindcxPnL: coindcxPnL,
+    //     fundingTime: this.lockedFundingTime,
+    //     fundingConfirmedAt: this.fundingConfirmedAt,
+    //     timeSinceLockedFunding: (timeSinceLockedFunding / 60000).toFixed(1),
+    //     deltaFR: deltaFRData ? deltaFRData.rate : null,
+    //     coindcxFR: coindcxFRData ? coindcxFRData.rate : null,
+    //     deltaPosition: this.latestDeltaPosition,
+    //     coindcxPosition: this.latestCoindcxPosition,
+    //   });
 
-      this.resetFundingState();
-      return;
-    }
+    //   this.resetFundingState();
+    //   return;
+    // }
 
     // ═══════════════════════════════════════════════════════════════════
     // ⏳ STILL MONITORING

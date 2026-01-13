@@ -136,7 +136,100 @@ class ArbitrageEngine extends EventEmitter {
     this.tradeMonitor.on('tradeRegistered', (trade) => {
       console.log('✅ Trade registered for monitoring');
     });
+
+    this.tradeMonitor.deltaMonitor.on('position', (data) => {
+      this.handlePositionChange('delta', data);
+    });
+
+    this.tradeMonitor.coindcxMonitor.on('position', (data) => {
+      this.handlePositionChange('coindcx', data);
+    });
   }
+
+  handlePositionChange(exchange, data) {
+        const { type, position } = data;
+
+        // Check if position is active
+        let hasPosition = false;
+        if (exchange === 'delta') {
+            hasPosition = position && Math.abs(position.positionAmt || 0) > 0;
+        } else if (exchange === 'coindcx') {
+            hasPosition = position && Math.abs(position.size || 0) > 0;
+        }
+
+        console.log(`\n📊 Position Change Detected (${exchange.toUpperCase()})`);
+        console.log(`   Type: ${type}`);
+        console.log(`   Has Position: ${hasPosition ? 'YES' : 'NO'}`);
+
+        // Check both exchanges for active positions
+        const hasDeltaPosition = this.tradeMonitor?.latestDeltaPosition &&
+            Math.abs(this.tradeMonitor.latestDeltaPosition.positionAmt || 0) > 0;
+
+        const hasCoindcxPosition = this.tradeMonitor?.latestCoindcxPosition &&
+            Math.abs(this.tradeMonitor.latestCoindcxPosition.size || 0) > 0;
+        const shouldLock = hasDeltaPosition || hasCoindcxPosition;
+
+        if (shouldLock !== this.hasActivePosition) {
+            this.hasActivePosition = shouldLock;
+            console.log(`\n🔒 POSITION LOCK STATUS CHANGED: ${shouldLock ? 'LOCKED ❌' : 'UNLOCKED ✅'}`);
+            console.log(`   Delta Position: ${hasDeltaPosition ? 'Active' : 'None'}`);
+            console.log(`   Coindcx Position: ${hasCoindcxPosition ? 'Active' : 'None'}`);
+
+            if (!shouldLock) {
+                console.log('   ✅ All positions closed - Bot can now execute new trades during pre-funding window');
+            } else {
+                console.log('   ❌ Position(s) active - Bot will NOT execute new trades until all positions are closed');
+            }
+        }
+    }
+
+    /**
+     * Check for existing positions at startup
+     */
+    async checkStartupPositions() {
+        console.log('\n🔍 Checking for existing positions at startup...');
+        console.log('━'.repeat(60));
+
+        // Wait a moment for initial position data to load
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const hasDeltaPosition = this.tradeMonitor?.latestDeltaPosition &&
+            Math.abs(this.tradeMonitor.latestDeltaPosition.positionAmt || 0) > 0;
+
+        const hasCoindcxPosition = this.tradeMonitor?.latestCoindcxPosition &&
+            Math.abs(this.tradeMonitor.latestCoindcxPosition.size || 0) > 0;
+        console.log(`📊 Startup Position Status:`);
+        console.log(`   Delta: ${hasDeltaPosition ? '✅ ACTIVE POSITION FOUND' : '⭕ No position'}`);
+        if (hasDeltaPosition) {
+            console.log(`      Symbol: ${this.tradeMonitor.latestDeltaPosition.symbol}`);
+            console.log(`      Size: ${Math.abs(this.tradeMonitor.latestDeltaPosition.positionAmt)}`);
+        }
+
+        console.log(`   Coindcx: ${hasCoindcxPosition ? '✅ ACTIVE POSITION FOUND' : '⭕ No position'}`);
+        if (hasCoindcxPosition) {
+            console.log(`      Symbol: ${this.tradeMonitor.latestCoindcxPosition.symbol}`);
+            console.log(`      Size: ${Math.abs(this.tradeMonitor.latestCoindcxPosition.size)}`);
+            console.log(`      Side: ${this.tradeMonitor.latestCoindcxPosition.side}`);
+        }
+
+        const hasAnyPosition = hasDeltaPosition || hasCoindcxPosition;
+        this.hasActivePosition = hasAnyPosition;
+
+        console.log(`\n🔒 Position Lock: ${this.hasActivePosition ? 'LOCKED ❌' : 'UNLOCKED ✅'}`);
+
+        if (this.hasActivePosition) {
+            console.log('   ⚠️  STARTUP POSITIONS DETECTED');
+            console.log('   → Bot will NOT execute new trades');
+            console.log('   → Monitoring existing positions for exit');
+            console.log('   → New trades will be allowed after all positions are closed');
+        } else {
+            console.log('   ✅ No existing positions found');
+            console.log('   → Bot ready to execute new trades during pre-funding window');
+        }
+
+        console.log('━'.repeat(60));
+    }
+
 
   /**
    * Start the arbitrage engine
@@ -161,6 +254,8 @@ class ArbitrageEngine extends EventEmitter {
         this.tradeMonitor = new TradeMonitor(this.deltaExchange, this.coindcxExchange);
         this.setupTradeMonitorHandlers();
         await this.tradeMonitor.start();
+
+        await this.checkStartupPositions();
       }
 
       this.isRunning = true;
@@ -910,12 +1005,12 @@ class ArbitrageEngine extends EventEmitter {
 
       // CHECK WHICH POSITIONS EXIST
       const hasDeltaPosition = exitData.details?.deltaPosition &&
-                              exitData.details.deltaPosition.size &&
-                              Math.abs(exitData.details.deltaPosition.size) > 0;
+        exitData.details.deltaPosition.size &&
+        Math.abs(exitData.details.deltaPosition.size) > 0;
 
       const hasCoindcxPosition = exitData.details?.coindcxPosition &&
-                                exitData.details.coindcxPosition.size &&
-                                Math.abs(exitData.details.coindcxPosition.size) > 0;
+        exitData.details.coindcxPosition.size &&
+        Math.abs(exitData.details.coindcxPosition.size) > 0;
 
       console.log('\n📊 POSITION STATUS:');
       console.log(`   Delta: ${hasDeltaPosition ? '✅ Active' : '❌ Missing/Closed'}`);
