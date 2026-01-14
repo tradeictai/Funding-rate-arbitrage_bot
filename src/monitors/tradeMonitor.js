@@ -408,7 +408,7 @@ checkForNormalExit() {
       console.log(`   Price Difference:   $${priceDifference.toFixed(8)} (${priceDifference >= 0 ? '+' : ''}${((priceDifference / deltaMarkPrice) * 100).toFixed(4)}%)`);
       console.log(`   Current Spread:     ${currentSpread.toFixed(4)}%`);
 
-      const EXIT_SPREAD_TARGET = 0.02; // 0.02%
+      const EXIT_SPREAD_TARGET = 0.03; // 0.02%
 
       if (currentSpread <= EXIT_SPREAD_TARGET) {
         console.log(`\n✅ SPREAD CONVERGENCE DETECTED (After Funding)!`);
@@ -646,7 +646,7 @@ checkForNormalExit() {
       console.log(`   Price Difference:   $${priceDifference.toFixed(8)} (${priceDifference >= 0 ? '+' : ''}${((priceDifference / deltaMarkPrice) * 100).toFixed(4)}%)`);
       console.log(`   Current Spread:     ${currentSpread.toFixed(4)}%`);
 
-      const EXIT_SPREAD_TARGET = 0.02; // 0.05%
+      const EXIT_SPREAD_TARGET = 0.03; // 0.05%
 
       if (currentSpread <= EXIT_SPREAD_TARGET) {
         console.log(`\n✅ SPREAD CONVERGENCE DETECTED (After Funding)!`);
