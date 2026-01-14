@@ -322,22 +322,22 @@ class PositionSizer {
     //   };
     // }
 
-    if (priceSpread < MIN_ENTRY_SPREAD) {
-      console.log(`❌ ENTRY REJECTED: Spread ${priceSpread.toFixed(4)}% < ${MIN_ENTRY_SPREAD}% (minimum required)`);
-      console.log('━'.repeat(60));
-      return {
-        canTrade: false,
-        reason: `Spread too low: ${priceSpread.toFixed(4)}% < ${MIN_ENTRY_SPREAD}% minimum`,
-        priceSpread,
-        shortExchange,
-        longExchange,
-        shortPrice,
-        longPrice,
-        balances,
-        // 🎯 Include TP for MongoDB storage (even though trade rejected)
-        tp: tpValues
-      };
-    }
+    // if (priceSpread < MIN_ENTRY_SPREAD) {
+    //   console.log(`❌ ENTRY REJECTED: Spread ${priceSpread.toFixed(4)}% < ${MIN_ENTRY_SPREAD}% (minimum required)`);
+    //   console.log('━'.repeat(60));
+    //   return {
+    //     canTrade: false,
+    //     reason: `Spread too low: ${priceSpread.toFixed(4)}% < ${MIN_ENTRY_SPREAD}% minimum`,
+    //     priceSpread,
+    //     shortExchange,
+    //     longExchange,
+    //     shortPrice,
+    //     longPrice,
+    //     balances,
+    //     // 🎯 Include TP for MongoDB storage (even though trade rejected)
+    //     tp: tpValues
+    //   };
+    // }
 
     console.log(`✅ SPREAD CHECK PASSED: ${priceSpread.toFixed(4)}% >= ${MIN_ENTRY_SPREAD}%`);
     console.log(`   SHORT (${shortExchange}) = $${shortPrice.toFixed(8)}`);
