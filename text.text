@@ -101,3 +101,190 @@ coindcxPosition: {
       size: 1000,
       positionAmount: -1000
     }
+
+
+
+
+    🔍 NORMAL EXIT CHECK
+delta {
+  adl_level: null,
+  auto_topup: false,
+  bankruptcy_price: '0.005895',
+  commission: '0.0061832',
+  created_at: '2026-01-15T06:58:51.363226Z',
+  entry_price: 0.00655,
+  liquidation_price: '0.00605875',
+  margin: '1.048',
+  margin_mode: 'isolated',
+  mark_price: 0.00654601,
+  product: {
+    initial_margin_scaling_factor: '0.00001',
+    maintenance_margin: '2.5',
+    product_specs: {
+      expiry_interval: 28800,
+      funding_clamp_value: 0.05,
+      isolated_liq_penalty_factor: 0.005,
+      only_reduce_only_orders_allowed: false,
+      rate_exchange_interval: 14400,
+      tags: [Array]
+    },
+    id: 89752,
+    auction_start_time: '2025-12-26T02:14:49Z',
+    default_leverage: '20.000000000000000000',
+    price_band: '10',
+    contract_value: '100',
+    initial_margin: '5',
+    settlement_price: null,
+    barrier_price: null,
+    impact_size: 3300,
+    quoting_asset: {
+      base_withdrawal_fee: '0.000000000000000000',
+      id: 14,
+      interest_credit: false,
+      interest_slabs: null,
+      kyc_deposit_limit: '0.000000000000000000',
+      kyc_withdrawal_limit: '0.000000000000000000',
+      min_withdrawal_amount: '0.000000000000000000',
+      minimum_precision: 2,
+      name: 'US Dollar',
+      networks: [],
+      precision: 8,
+      sort_priority: 3,
+      symbol: 'USD',
+      variable_withdrawal_fee: '0.000000000000000000'
+    },
+    trading_status: 'operational',
+    underlying_asset: {
+      base_withdrawal_fee: '0.000000000000000000',
+      id: 168,
+      interest_credit: false,
+      interest_slabs: null,
+      kyc_deposit_limit: '0.000000000000000000',
+      kyc_withdrawal_limit: '0.000000000000000000',
+      min_withdrawal_amount: '0.000000000000000000',
+      minimum_precision: 2,
+      name: 'Towns',
+      networks: [],
+      precision: 8,
+      sort_priority: 3,
+      symbol: 'TOWNS',
+      variable_withdrawal_fee: '0.000000000000000000'
+    },
+    tick_size: '0.00001',
+    disruption_reason: null,
+    symbol: 'TOWNSUSD',
+    notional_type: 'vanilla',
+    contract_type: 'perpetual_futures',
+    maker_commission_rate: '0.0002',
+    annualized_funding: '43.8',
+    launch_time: '2025-08-14T06:39:09Z',
+    auction_finish_time: null,
+    is_quanto: false,
+    settlement_time: null,
+    spot_index: {
+      config: [Object],
+      constituent_exchanges: [],
+      constituent_indices: [Object],
+      description: 'TOWNS spot price index quoted in USD',
+      health_interval: 300,
+      id: 317,
+      impact_size: '300000.000000000000000000',
+      index_type: 'spot_pair',
+      is_composite: true,
+      price_method: 'ltp',
+      quoting_asset_id: 14,
+      symbol: '.DETOWNSUSD',
+      tick_size: '0.000010000000000000',
+      underlying_asset_id: 168
+    },
+    strike_price: null,
+    max_leverage_notional: '50000',
+    taker_commission_rate: '0.0005',
+    settling_asset: {
+      base_withdrawal_fee: '0.000000000000000000',
+      id: 14,
+      interest_credit: false,
+      interest_slabs: null,
+      kyc_deposit_limit: '0.000000000000000000',
+      kyc_withdrawal_limit: '0.000000000000000000',
+      min_withdrawal_amount: '0.000000000000000000',
+      minimum_precision: 2,
+      name: 'US Dollar',
+      networks: [],
+      precision: 8,
+      sort_priority: 3,
+      symbol: 'USD',
+      variable_withdrawal_fee: '0.000000000000000000'
+    },
+    contract_unit_currency: 'TOWNS',
+    basis_factor_max_limit: '219',
+    description: 'TOWNS perpetual future quoted in USD',
+    maintenance_margin_scaling_factor: '0.000005',
+    liquidation_penalty_factor: '0.2',
+    position_size_limit: 75000,
+    insurance_fund_margin_contribution: '5',
+    funding_method: 'mark_price',
+    short_description: 'Towns Perpetual',
+    ui_config: {
+      default_trading_view_candle: '15',
+      leverage_slider_values: [Array],
+      price_clubbing_values: [Array],
+      show_bracket_orders: false,
+      sort_priority: 130,
+      tags: []
+    },
+    state: 'live'
+  },
+  product_id: 89752,
+  product_symbol: 'TOWNSUSD',
+  realized_cashflow: '0.000000000000000000',
+  realized_funding: '0',
+  realized_holding_cost: '0',
+  realized_pnl: '0',
+  size: 16,
+  unrealized_pnl: -0.006384,
+  updated_at: '2026-01-15T06:58:51.363226Z',
+  user_id: 77050718,
+  sizeAbs: 16,
+  side: 'LONG',
+  unrealized_pnl_percent: -0.6091603053435114,
+  price_change: -0.00000399000000000059
+}
+coindcx {
+  id: '55ea1676-dd18-11f0-b6f3-a7b0a229e301',
+  pair: 'B-TOWNS_USDT',
+  active_pos: -1600,
+  inactive_pos_buy: 0,
+  inactive_pos_sell: 0,
+  avg_price: 0.006536,
+  liquidation_price: 0,
+  locked_margin: 1.046081888,
+  locked_user_margin: 1.052251872,
+  locked_order_margin: 0,
+  take_profit_trigger: null,
+  stop_loss_trigger: null,
+  leverage: 10,
+  maintenance_margin: 0.156912,
+  mark_price: 0.006538,
+  margin_type: 'crossed',
+  settlement_currency_avg_price: 1,
+  margin_currency_short_name: 'USDT',
+  updated_at: 1768460330980,
+  symbol: 'B-TOWNS_USDT',
+  side: 'SHORT',
+  size: 1600,
+  positionAmount: -1600,
+  unrealised_pnl: -0.0218,
+  unrealisedPnl: -0.0218,
+  pnl: -0.0218
+}
+
+
+Delta API GET /v2/positions?product_id=undefined - Status: 400
+Delta API request failed: Delta API Error (400): Schema validation failed: undefined: Should be an integer
+Delta API getPositions error: Delta API Error (400): Schema validation failed: undefined: Should be an integer
+❌ REST verification failed: Delta API Error (400): Schema validation failed: undefined: Should be an integer
+   Delta:   ❌ Missing
+   CoinDCX: ❌ Missing
+────────────────────────────────────────────────────────────
+

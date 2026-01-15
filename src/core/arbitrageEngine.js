@@ -146,89 +146,174 @@ class ArbitrageEngine extends EventEmitter {
     });
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // 🔧 FIXED: Position size extraction with correct field names
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Get Delta position size (using correct field: 'size')
+   */
+  getDeltaPositionSize(position) {
+    if (!position) return 0;
+    // Delta uses 'size' field (number of contracts)
+    const size = Math.abs(parseFloat(position.size || 0));
+    const contractValue = parseFloat(position.product?.contract_value || 1);
+    return size * contractValue;
+  }
+
+  /**
+   * Get CoinDCX position size (using correct fields)
+   */
+  getCoindcxPositionSize(position) {
+    if (!position) return 0;
+    // CoinDCX uses 'size', 'active_pos', or 'positionAmount'
+    const size = parseFloat(
+      position.size ||
+      position.active_pos ||
+      position.positionAmount ||
+      0
+    );
+    return Math.abs(size);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🔧 FIXED: Position change handler with correct field detection
+  // ═══════════════════════════════════════════════════════════════
+
   handlePositionChange(exchange, data) {
-        const { type, position } = data;
+    const { type, position } = data;
 
-        // Check if position is active
-        let hasPosition = false;
-        if (exchange === 'delta') {
-            hasPosition = position && Math.abs(position.positionAmt || 0) > 0;
-        } else if (exchange === 'coindcx') {
-            hasPosition = position && Math.abs(position.size || 0) > 0;
-        }
+    console.log(`\n📊 Position Change Detected (${exchange.toUpperCase()})`);
+    console.log(`   Type: ${type}`);
 
-        console.log(`\n📊 Position Change Detected (${exchange.toUpperCase()})`);
-        console.log(`   Type: ${type}`);
-        console.log(`   Has Position: ${hasPosition ? 'YES' : 'NO'}`);
+    // 🔴 FIXED: Handle delete/close/liquidated events
+    if (type === 'delete' || type === 'closed' || type === 'liquidated' || type === 'zero_size') {
+      console.log(`   ⚠️ Position CLOSED/DELETED (type: ${type})`);
 
-        // Check both exchanges for active positions
-        const hasDeltaPosition = this.tradeMonitor?.latestDeltaPosition &&
-            Math.abs(this.tradeMonitor.latestDeltaPosition.positionAmt || 0) > 0;
-
-        const hasCoindcxPosition = this.tradeMonitor?.latestCoindcxPosition &&
-            Math.abs(this.tradeMonitor.latestCoindcxPosition.size || 0) > 0;
-        const shouldLock = hasDeltaPosition || hasCoindcxPosition;
-
-        if (shouldLock !== this.hasActivePosition) {
-            this.hasActivePosition = shouldLock;
-            console.log(`\n🔒 POSITION LOCK STATUS CHANGED: ${shouldLock ? 'LOCKED ❌' : 'UNLOCKED ✅'}`);
-            console.log(`   Delta Position: ${hasDeltaPosition ? 'Active' : 'None'}`);
-            console.log(`   Coindcx Position: ${hasCoindcxPosition ? 'Active' : 'None'}`);
-
-            if (!shouldLock) {
-                console.log('   ✅ All positions closed - Bot can now execute new trades during pre-funding window');
-            } else {
-                console.log('   ❌ Position(s) active - Bot will NOT execute new trades until all positions are closed');
-            }
-        }
+      // Update position lock status
+      this.updatePositionLockStatus();
+      return;
     }
 
-    /**
-     * Check for existing positions at startup
-     */
-    async checkStartupPositions() {
-        console.log('\n🔍 Checking for existing positions at startup...');
-        console.log('━'.repeat(60));
+    // 🔴 FIXED: Use correct field names for each exchange
+    let hasPosition = false;
+    let positionSize = 0;
 
-        // Wait a moment for initial position data to load
-        await new Promise(resolve => setTimeout(resolve, 3000));
+    if (exchange === 'delta') {
+      // Delta uses 'size' field, NOT 'positionAmt'
+      positionSize = this.getDeltaPositionSize(position);
+      hasPosition = positionSize > 0;
 
-        const hasDeltaPosition = this.tradeMonitor?.latestDeltaPosition &&
-            Math.abs(this.tradeMonitor.latestDeltaPosition.positionAmt || 0) > 0;
+      console.log(`   Symbol: ${position.product_symbol}`);
+      console.log(`   Size: ${position.size} (value: ${positionSize})`);
+      console.log(`   Side: ${position.side}`);
+    } else if (exchange === 'coindcx') {
+      // CoinDCX uses 'size', 'active_pos', or 'positionAmount'
+      positionSize = this.getCoindcxPositionSize(position);
+      hasPosition = positionSize > 0;
 
-        const hasCoindcxPosition = this.tradeMonitor?.latestCoindcxPosition &&
-            Math.abs(this.tradeMonitor.latestCoindcxPosition.size || 0) > 0;
-        console.log(`📊 Startup Position Status:`);
-        console.log(`   Delta: ${hasDeltaPosition ? '✅ ACTIVE POSITION FOUND' : '⭕ No position'}`);
-        if (hasDeltaPosition) {
-            console.log(`      Symbol: ${this.tradeMonitor.latestDeltaPosition.symbol}`);
-            console.log(`      Size: ${Math.abs(this.tradeMonitor.latestDeltaPosition.positionAmt)}`);
-        }
-
-        console.log(`   Coindcx: ${hasCoindcxPosition ? '✅ ACTIVE POSITION FOUND' : '⭕ No position'}`);
-        if (hasCoindcxPosition) {
-            console.log(`      Symbol: ${this.tradeMonitor.latestCoindcxPosition.symbol}`);
-            console.log(`      Size: ${Math.abs(this.tradeMonitor.latestCoindcxPosition.size)}`);
-            console.log(`      Side: ${this.tradeMonitor.latestCoindcxPosition.side}`);
-        }
-
-        const hasAnyPosition = hasDeltaPosition || hasCoindcxPosition;
-        this.hasActivePosition = hasAnyPosition;
-
-        console.log(`\n🔒 Position Lock: ${this.hasActivePosition ? 'LOCKED ❌' : 'UNLOCKED ✅'}`);
-
-        if (this.hasActivePosition) {
-            console.log('   ⚠️  STARTUP POSITIONS DETECTED');
-            console.log('   → Bot will NOT execute new trades');
-            console.log('   → Monitoring existing positions for exit');
-            console.log('   → New trades will be allowed after all positions are closed');
-        } else {
-            console.log('   ✅ No existing positions found');
-            console.log('   → Bot ready to execute new trades during pre-funding window');
-        }
-
-        console.log('━'.repeat(60));
+      console.log(`   Symbol: ${position.symbol || position.pair}`);
+      console.log(`   Size: ${positionSize}`);
+      console.log(`   Side: ${position.side}`);
     }
+
+    console.log(`   Has Position: ${hasPosition ? 'YES ✅' : 'NO ❌'}`);
+
+    // 🔴 FIXED: If size is 0, treat as position closed
+    if (!hasPosition) {
+      console.log(`   ⚠️ Position size is 0 - treating as CLOSED`);
+    }
+
+    // Update position lock status
+    this.updatePositionLockStatus();
+  }
+
+  /**
+   * Update position lock status based on current positions
+   */
+  updatePositionLockStatus() {
+    // 🔴 FIXED: Use correct field names
+    const hasDeltaPosition = this.tradeMonitor?.latestDeltaPosition &&
+      this.getDeltaPositionSize(this.tradeMonitor.latestDeltaPosition) > 0;
+
+    const hasCoindcxPosition = this.tradeMonitor?.latestCoindcxPosition &&
+      this.getCoindcxPositionSize(this.tradeMonitor.latestCoindcxPosition) > 0;
+
+    const shouldLock = hasDeltaPosition || hasCoindcxPosition;
+
+    console.log(`\n🔍 Position Lock Check:`);
+    console.log(`   Delta Position: ${hasDeltaPosition ? 'Active ✅' : 'None ❌'}`);
+    console.log(`   CoinDCX Position: ${hasCoindcxPosition ? 'Active ✅' : 'None ❌'}`);
+
+    if (shouldLock !== this.hasActivePosition) {
+      this.hasActivePosition = shouldLock;
+
+      console.log(`\n🔒 POSITION LOCK STATUS CHANGED: ${shouldLock ? 'LOCKED ❌' : 'UNLOCKED ✅'}`);
+
+      if (!shouldLock) {
+        console.log('   ✅ All positions closed - Bot can execute new trades');
+      } else {
+        console.log('   ❌ Position(s) active - Bot will NOT execute new trades');
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🔧 FIXED: Startup position check with correct field names
+  // ═══════════════════════════════════════════════════════════════
+
+  async checkStartupPositions() {
+    console.log('\n🔍 Checking for existing positions at startup...');
+    console.log('━'.repeat(60));
+
+    // Wait for initial position data to load
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // 🔴 FIXED: Use correct field names
+    const deltaPosition = this.tradeMonitor?.latestDeltaPosition;
+    const coindcxPosition = this.tradeMonitor?.latestCoindcxPosition;
+
+    const hasDeltaPosition = deltaPosition && this.getDeltaPositionSize(deltaPosition) > 0;
+    const hasCoindcxPosition = coindcxPosition && this.getCoindcxPositionSize(coindcxPosition) > 0;
+
+    console.log(`📊 Startup Position Status:`);
+
+    console.log(`   Delta: ${hasDeltaPosition ? '✅ ACTIVE POSITION FOUND' : '⭕ No position'}`);
+    if (hasDeltaPosition) {
+      console.log(`      Symbol: ${deltaPosition.product_symbol}`);
+      console.log(`      Size: ${deltaPosition.size}`);
+      console.log(`      Side: ${deltaPosition.side}`);
+      console.log(`      Entry Price: $${deltaPosition.entry_price}`);
+      console.log(`      Mark Price: $${deltaPosition.mark_price}`);
+      console.log(`      Liq Price: $${deltaPosition.liquidation_price}`);
+    }
+
+    console.log(`   CoinDCX: ${hasCoindcxPosition ? '✅ ACTIVE POSITION FOUND' : '⭕ No position'}`);
+    if (hasCoindcxPosition) {
+      console.log(`      Symbol: ${coindcxPosition.symbol || coindcxPosition.pair}`);
+      console.log(`      Size: ${this.getCoindcxPositionSize(coindcxPosition)}`);
+      console.log(`      Side: ${coindcxPosition.side}`);
+      console.log(`      Avg Price: $${coindcxPosition.avg_price}`);
+      console.log(`      Mark Price: $${coindcxPosition.mark_price}`);
+      console.log(`      Leverage: ${coindcxPosition.leverage}x`);
+    }
+
+    const hasAnyPosition = hasDeltaPosition || hasCoindcxPosition;
+    this.hasActivePosition = hasAnyPosition;
+
+    console.log(`\n🔒 Position Lock: ${this.hasActivePosition ? 'LOCKED ❌' : 'UNLOCKED ✅'}`);
+
+    if (this.hasActivePosition) {
+      console.log('   ⚠️  STARTUP POSITIONS DETECTED');
+      console.log('   → Bot will NOT execute new trades');
+      console.log('   → Monitoring existing positions for exit');
+    } else {
+      console.log('   ✅ No existing positions found');
+      console.log('   → Bot ready to execute new trades');
+    }
+
+    console.log('━'.repeat(60));
+  }
 
 
   /**

@@ -113,10 +113,10 @@ class DeltaExchange extends EventEmitter {
         if (config.env === 'development') {
           const fundingDate = new Date(nextFundingMs);
           const remaining = this.formatCountdown(Math.floor((nextFundingMs - Date.now()) / 1000));
-          console.log(`\n✅ Funding time stored for ${symbol}:`);
-          console.log(`   Next Funding: ${fundingDate.toLocaleString()}`);
-          console.log(`   Time Remaining: ${remaining}`);
-          console.log(`   Funding Interval: ${msg.funding_interval}s (${msg.funding_interval/3600}h)\n`);
+          // console.log(`\n✅ Funding time stored for ${symbol}:`);
+          // console.log(`   Next Funding: ${fundingDate.toLocaleString()}`);
+          // console.log(`   Time Remaining: ${remaining}`);
+          // console.log(`   Funding Interval: ${msg.funding_interval}s (${msg.funding_interval/3600}h)\n`);
         }
       }
 
@@ -194,21 +194,21 @@ class DeltaExchange extends EventEmitter {
    * Log update (for development)
    */
   logUpdate(data) {
-    console.log('\n📨 Delta Real-Time Update');
-    console.log('==========================');
-    console.log('Symbol:'.padEnd(20), data.symbol);
-    console.log('Funding Rate:'.padEnd(20),
-      data.fundingRate !== null ? data.fundingRate.toFixed(4) + '%' : 'N/A'
-    );
-    console.log('Next Funding:'.padEnd(20),
-      data.nextFundingTime ? new Date(data.nextFundingTime).toLocaleString() : 'N/A'
-    );
-    console.log('Time Remaining:'.padEnd(20),
-      data.remainingSeconds ? this.formatCountdown(data.remainingSeconds) : 'N/A'
-    );
-    console.log('Mark Price:'.padEnd(20), data.markPrice || 'N/A');
-    console.log('Volume:'.padEnd(20), data.volume || 'N/A');
-    console.log('==========================\n');
+    // console.log('\n📨 Delta Real-Time Update');
+    // console.log('==========================');
+    // console.log('Symbol:'.padEnd(20), data.symbol);
+    // console.log('Funding Rate:'.padEnd(20),
+    //   data.fundingRate !== null ? data.fundingRate.toFixed(4) + '%' : 'N/A'
+    // );
+    // console.log('Next Funding:'.padEnd(20),
+    //   data.nextFundingTime ? new Date(data.nextFundingTime).toLocaleString() : 'N/A'
+    // );
+    // console.log('Time Remaining:'.padEnd(20),
+    //   data.remainingSeconds ? this.formatCountdown(data.remainingSeconds) : 'N/A'
+    // );
+    // console.log('Mark Price:'.padEnd(20), data.markPrice || 'N/A');
+    // console.log('Volume:'.padEnd(20), data.volume || 'N/A');
+    // console.log('==========================\n');
   }
 
   /**
