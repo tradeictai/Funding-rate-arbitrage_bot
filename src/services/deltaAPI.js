@@ -230,20 +230,67 @@ class DeltaAPI {
   /**
    * Get current positions
    */
-  async getPositions(productId) {
-  try {
-    const response = await this.request('GET', `/v2/positions?product_id=${productId}`);  // <-- Changed endpoint
-    // Response format: { success: true, result: [array of positions] }
-    if (response.success) {
-      return response.result || [];
-    } else {
-      throw new Error(response.message || 'Failed to fetch positions');
+ async getAllPositions() {
+    try {
+      // Try /v2/positions/margined first (gets all margined positions)
+      const response = await this.request('GET', '/v2/positions/margined', null, true);
+      
+      if (response.success) {
+        const positions = response.result || [];
+        console.log(`✅ Delta getAllPositions: Found ${positions.length} position(s)`);
+        return positions;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Delta API getAllPositions error:', error.message);
+      
+      // Fallback: try /v2/positions without product_id (some Delta versions support this)
+      try {
+        const fallbackResponse = await this.request('GET', '/v2/positions', null, true);
+        if (fallbackResponse.success) {
+          return fallbackResponse.result || [];
+        }
+      } catch (fallbackError) {
+        console.error('Delta API fallback also failed:', fallbackError.message);
+      }
+      
+      return [];
     }
-  } catch (error) {
-    console.error('Delta API getPositions error:', error.message);
-    throw error;
   }
-}
+
+  /**
+   * Get positions for a specific product
+   * @param {number} productId - Product ID (optional)
+   * @returns {Promise<Array>} - Positions array
+   */
+  async getPositions(productId = null) {
+    try {
+      // If no productId provided, get all positions
+      if (!productId) {
+        return await this.getAllPositions();
+      }
+
+      // If productId provided, get specific position
+      const response = await this.request('GET', `/v2/positions?product_id=${productId}`, null, true);
+      
+      if (response.success) {
+        return response.result || [];
+      } else {
+        throw new Error(response.message || 'Failed to fetch positions');
+      }
+    } catch (error) {
+      console.error('Delta API getPositions error:', error.message);
+      
+      // If specific product fails, try getting all positions
+      if (productId) {
+        console.log('Falling back to getAllPositions...');
+        return await this.getAllPositions();
+      }
+      
+      return [];
+    }
+  }
 
   /**
    * Get position for specific symbol

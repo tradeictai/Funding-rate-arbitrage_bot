@@ -75,6 +75,7 @@ class TradeMonitor extends EventEmitter {
         this.checkForNormalExit();
         this.performFlipCheck();
         this.checkPreLiquidation();
+        this.checkPositionExistence()
       }
     });
 
@@ -83,6 +84,7 @@ class TradeMonitor extends EventEmitter {
         this.checkForNormalExit();
         this.performFlipCheck();
         this.checkPreLiquidation();
+        this.checkPositionExistence()
       }
     });
   }
@@ -174,6 +176,7 @@ class TradeMonitor extends EventEmitter {
 
 
     // Position existence is now checked periodically by interval timer
+    this.checkPositionExistence();
   }
 
   async handleCoindcxPosition(data) {
@@ -209,6 +212,7 @@ class TradeMonitor extends EventEmitter {
     }
 
     // Position existence is now checked periodically by interval timer
+    this.checkPositionExistence();
   }
 
   /**
@@ -219,6 +223,7 @@ class TradeMonitor extends EventEmitter {
     this.checkPreLiquidation();
     this.performFlipCheck();
     this.checkForNormalExit();
+    this.checkPositionExistence()
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -882,7 +887,7 @@ class TradeMonitor extends EventEmitter {
     console.log("\n🔍 POSITION EXISTENCE CHECK");
     console.log("─".repeat(60));
 
-    const ONE_SIDED_TIMEOUT_MS = 30000; // 30 seconds
+    const ONE_SIDED_TIMEOUT_MS = 2000; // 30 seconds
     const now = Date.now();
 
     // Verify via REST API periodically
@@ -965,72 +970,173 @@ class TradeMonitor extends EventEmitter {
   }
 
   async verifyPositionsViaREST() {
-    const now = Date.now();
-    const MIN_INTERVAL = 15000; // 15 seconds minimum
+  const now = Date.now();
+  const MIN_INTERVAL = 5000; // 5 seconds
 
-    if (now - this.lastRestVerificationTime < MIN_INTERVAL) {
-      return;
-    }
-
-    this.lastRestVerificationTime = now;
-
-    console.log('\n🔄 REST API VERIFICATION');
-    console.log('─'.repeat(40));
-
-    try {
-      // Get Delta positions via REST
-      const deltaPositions = await deltaAPI.getPositions();
-      const activeDeltaREST = deltaPositions.find(p =>
-        Math.abs(parseFloat(p.size || 0)) > 0
-      );
-
-      // Get CoinDCX positions via REST
-      const coindcxPositions = await coindcxAPI.getPositions();
-      const activeCoindcxREST = coindcxPositions.find(p =>
-        Math.abs(parseFloat(p.size || p.active_pos || p.positionAmount || 0)) > 0
-      );
-
-      const wsHasDelta = this.hasDeltaPosition();
-      const wsHasCoindcx = this.hasCoindcxPosition();
-      const restHasDelta = !!activeDeltaREST;
-      const restHasCoindcx = !!activeCoindcxREST;
-
-      console.log(`   Delta:   WS=${wsHasDelta ? '✅' : '❌'} | REST=${restHasDelta ? '✅' : '❌'}`);
-      console.log(`   CoinDCX: WS=${wsHasCoindcx ? '✅' : '❌'} | REST=${restHasCoindcx ? '✅' : '❌'}`);
-
-      // Detect WebSocket missed a closure (liquidation)
-      if (wsHasDelta && !restHasDelta) {
-        console.log('\n🔴 MISMATCH: WebSocket shows Delta, REST shows NONE');
-        console.log('   → Delta was likely LIQUIDATED/CLOSED');
-        this.handleDeltaPositionClosed({
-          type: 'rest_verification',
-          reason: 'Position not found via REST API - likely liquidated'
-        });
-      }
-
-      if (wsHasCoindcx && !restHasCoindcx) {
-        console.log('\n🔴 MISMATCH: WebSocket shows CoinDCX, REST shows NONE');
-        console.log('   → CoinDCX was likely LIQUIDATED/CLOSED');
-        this.handleCoindcxPositionClosed({
-          type: 'rest_verification',
-          reason: 'Position not found via REST API - likely liquidated'
-        });
-      }
-
-      // Update with REST data if available (more reliable)
-      if (activeDeltaREST) {
-        this.latestDeltaPosition = activeDeltaREST;
-      }
-      if (activeCoindcxREST) {
-        this.latestCoindcxPosition = activeCoindcxREST;
-      }
-
-      console.log('─'.repeat(40));
-
-    } catch (error) {
-      console.error('❌ REST verification failed:', error.message);
-    }
+  if (now - this.lastRestVerificationTime < MIN_INTERVAL) {
+    return;
   }
+
+  this.lastRestVerificationTime = now;
+
+  console.log('\n🔄 REST API VERIFICATION');
+  console.log('─'.repeat(50));
+
+  let restHasDelta = false;
+  let restHasCoindcx = false;
+  let activeDeltaREST = null;
+  let activeCoindcxREST = null;
+
+  // ═══════════════════════════════════════════════════════════════
+  // DELTA REST CHECK - WITH SIDE DETECTION
+  // ═══════════════════════════════════════════════════════════════
+  try {
+    const deltaPositions = await deltaAPI.getAllPositions();
+
+    console.log(`   Delta REST: Fetched ${Array.isArray(deltaPositions) ? deltaPositions.length : 0} position(s)`);
+
+    if (Array.isArray(deltaPositions) && deltaPositions.length > 0) {
+      // 🔴 ADD SIDE to each position
+      deltaPositions.forEach((p, i) => {
+        const size = parseFloat(p.size || 0);
+        
+        // Determine side from size sign
+        // Delta: positive size = LONG, negative size = SHORT
+        let side = 'UNKNOWN';
+        if (size > 0) {
+          side = 'LONG';
+        } else if (size < 0) {
+          side = 'SHORT';
+        }
+        
+        // Add side field to position object
+        p.side = side;
+        
+        console.log(`      [${i}] ${p.product_symbol}: size=${p.size}, side=${side}`);
+      });
+
+      // Find position with non-zero size
+      activeDeltaREST = deltaPositions.find(p => {
+        const size = Math.abs(parseFloat(p.size || 0));
+        return size > 0;
+      });
+    }
+
+    restHasDelta = !!activeDeltaREST;
+
+    if (activeDeltaREST) {
+      console.log(`   Delta REST: ✅ ACTIVE POSITION`);
+      console.log(`      Symbol: ${activeDeltaREST.product_symbol}`);
+      console.log(`      Size: ${activeDeltaREST.size}`);
+      console.log(`      Side: ${activeDeltaREST.side}`);
+    } else {
+      console.log(`   Delta REST: ❌ NO ACTIVE POSITION`);
+    }
+  } catch (error) {
+    console.error(`   Delta REST: ❌ Error - ${error.message}`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // COINDCX REST CHECK - WITH SIDE DETECTION
+  // ═══════════════════════════════════════════════════════════════
+  try {
+    const coindcxPositions = await coindcxAPI.getPositions();
+
+    console.log(`   CoinDCX REST: Fetched ${Array.isArray(coindcxPositions) ? coindcxPositions.length : 0} position(s)`);
+
+    if (Array.isArray(coindcxPositions) && coindcxPositions.length > 0) {
+      // 🔴 ADD SIDE to each position
+      coindcxPositions.forEach((p, i) => {
+        const size = parseFloat(p.size || p.active_pos || p.positionAmount || 0);
+        
+        // Determine side from size sign
+        // CoinDCX: positive size = LONG, negative size = SHORT
+        let side = 'UNKNOWN';
+        if (size > 0) {
+          side = 'LONG';
+        } else if (size < 0) {
+          side = 'SHORT';
+        }
+        
+        // Add side field to position object
+        p.side = side;
+        
+        console.log(`      [${i}] ${p.symbol || p.pair}: size=${size}, side=${side}`);
+      });
+
+      activeCoindcxREST = coindcxPositions.find(p => {
+        const size = Math.abs(parseFloat(
+          p.size || p.active_pos || p.positionAmount || 0
+        ));
+        return size > 0;
+      });
+    }
+
+    restHasCoindcx = !!activeCoindcxREST;
+
+    if (activeCoindcxREST) {
+      console.log(`   CoinDCX REST: ✅ ACTIVE POSITION`);
+      console.log(`      Symbol: ${activeCoindcxREST.symbol || activeCoindcxREST.pair}`);
+      console.log(`      Size: ${this.getCoindcxPositionSize(activeCoindcxREST)}`);
+      console.log(`      Side: ${activeCoindcxREST.side}`);
+    } else {
+      console.log(`   CoinDCX REST: ❌ NO ACTIVE POSITION`);
+    }
+  } catch (error) {
+    console.error(`   CoinDCX REST: ❌ Error - ${error.message}`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // COMPARE WEBSOCKET VS REST
+  // ═══════════════════════════════════════════════════════════════
+  const wsHasDelta = this.hasDeltaPosition();
+  const wsHasCoindcx = this.hasCoindcxPosition();
+
+  console.log(`\n   📊 COMPARISON:`);
+  console.log(`   ┌─────────────┬──────────┬──────────┐`);
+  console.log(`   │ Exchange    │ WebSocket│ REST API │`);
+  console.log(`   ├─────────────┼──────────┼──────────┤`);
+  console.log(`   │ Delta       │ ${wsHasDelta ? '✅ YES   ' : '❌ NO    '} │ ${restHasDelta ? '✅ YES   ' : '❌ NO    '} │`);
+  console.log(`   │ CoinDCX     │ ${wsHasCoindcx ? '✅ YES   ' : '❌ NO    '} │ ${restHasCoindcx ? '✅ YES   ' : '❌ NO    '} │`);
+  console.log(`   └─────────────┴──────────┴──────────┘`);
+
+  // MISMATCH DETECTION & FIX
+  if (wsHasDelta && !restHasDelta) {
+    console.log('\n🔴 MISMATCH: WebSocket shows Delta, REST shows NONE');
+    console.log('   → Clearing stale WebSocket data');
+    this.clearDeltaPosition('rest_mismatch');
+  }
+
+  if (wsHasCoindcx && !restHasCoindcx) {
+    console.log('\n🔴 MISMATCH: WebSocket shows CoinDCX, REST shows NONE');
+    console.log('   → Clearing stale WebSocket data');
+    this.clearCoindcxPosition('rest_mismatch');
+  }
+
+  // Update from REST if WebSocket is stale
+  if (!wsHasDelta && restHasDelta && activeDeltaREST) {
+    console.log('\n🔄 Updating Delta from REST (with side field)');
+    this.latestDeltaPosition = activeDeltaREST;
+  }
+
+  if (!wsHasCoindcx && restHasCoindcx && activeCoindcxREST) {
+    console.log('\n🔄 Updating CoinDCX from REST (with side field)');
+    this.latestCoindcxPosition = activeCoindcxREST;
+  }
+
+  console.log('─'.repeat(50));
+}
+
+// 🔴 HELPER METHODS to clear positions
+clearDeltaPosition(reason) {
+  console.log(`🧹 Clearing Delta position (reason: ${reason})`);
+  this.latestDeltaPosition = null;
+}
+
+clearCoindcxPosition(reason) {
+  console.log(`🧹 Clearing CoinDCX position (reason: ${reason})`);
+  this.latestCoindcxPosition = null;
+}
 
   /**
  * COMPLETE EXIT LOGIC - Updated checkForNormalExit()
@@ -1056,8 +1162,8 @@ class TradeMonitor extends EventEmitter {
 
 
     const now = Date.now();
-    const deltaMarkPrice = this.latestDeltaPosition.mark_price;
-    const coindcxMarkPrice = this.latestCoindcxPosition.mark_price;
+   const deltaMarkPrice = parseFloat(this.latestDeltaPosition.mark_price || 0);
+  const coindcxMarkPrice = parseFloat(this.latestCoindcxPosition.mark_price || 0);
 
     // ═══════════════════════════════════════════════════════════════════
     // 🔧 STEP 0: CALCULATE & STORE ENTRY SPREAD (First time only)
