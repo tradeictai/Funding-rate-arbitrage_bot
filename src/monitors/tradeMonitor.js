@@ -307,8 +307,8 @@ class TradeMonitor extends EventEmitter {
   checkPreLiquidation() {
     if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return false;
 
-    // 🔴 10% buffer rakhna hai liquidation se pehle
-    const bufferPercent = 10;
+    // 🔴 30% buffer rakhna hai liquidation se pehle
+    const bufferPercent = 30;
 
     const deltaLeverage = this.leverage || 10;
     const coindcxLeverage = this.leverage || 10;
