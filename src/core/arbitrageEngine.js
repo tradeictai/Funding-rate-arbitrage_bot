@@ -53,7 +53,7 @@ class ArbitrageEngine extends EventEmitter {
     this.orderCooldownMs = config.trading.orderCooldownMinutes * 60 * 1000;
     this.paperTradingMode = config.trading.paperTradingMode;
     this.phase2Enabled = config.trading.phase2Enabled || true;
-    this.phase3Enabled = config.trading.phase3Enabled || true;
+    this.phase3Enabled = config.trading.phase3Enabled || true
 
 
 

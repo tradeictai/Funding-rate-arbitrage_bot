@@ -156,16 +156,16 @@ class BinanceExchange extends EventEmitter {
    * Log update (for development)
    */
   logUpdate(data, index) {
-    console.log(`
----------------------------------------
-#${index}
-Token:              ${data.symbol}
-Mark Price:         ${data.markPrice}
-Index Price:        ${data.indexPrice}
-Funding Rate:       ${data.fundingRate.toFixed(4)}%
-Next Funding At:    ${data.nextFundingTime ? new Date(data.nextFundingTime).toLocaleString() : 'N/A'}
-Time Remaining:     ${data.remainingSeconds !== null ? this.formatCountdown(data.remainingSeconds) : 'N/A'}
----------------------------------------`);
+//     console.log(`
+// ---------------------------------------
+// #${index}
+// Token:              ${data.symbol}
+// Mark Price:         ${data.markPrice}
+// Index Price:        ${data.indexPrice}
+// Funding Rate:       ${data.fundingRate.toFixed(4)}%
+// Next Funding At:    ${data.nextFundingTime ? new Date(data.nextFundingTime).toLocaleString() : 'N/A'}
+// Time Remaining:     ${data.remainingSeconds !== null ? this.formatCountdown(data.remainingSeconds) : 'N/A'}
+// ---------------------------------------`);
   }
 
   /**

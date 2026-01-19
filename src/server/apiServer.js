@@ -84,11 +84,16 @@ class APIServer {
       this.server = this.app.listen(this.port, () => {
         console.log(`[API Server] REST API running on port ${this.port}`);
         console.log(`[API Server] Available endpoints:`);
-        console.log(`  - GET  http://localhost:${this.port}/health`);
-        console.log(`  - GET  http://localhost:${this.port}/api/settings`);
-        console.log(`  - PUT  http://localhost:${this.port}/api/settings`);
-        console.log(`  - POST http://localhost:${this.port}/api/settings/reset`);
-        console.log(`  - GET  http://localhost:${this.port}/api/settings/fields`);
+        console.log(`  - GET    http://localhost:${this.port}/health`);
+        console.log(`  - GET    http://localhost:${this.port}/api/settings`);
+        console.log(`  - PUT    http://localhost:${this.port}/api/settings`);
+        console.log(`  - POST   http://localhost:${this.port}/api/settings/reset`);
+        console.log(`  - GET    http://localhost:${this.port}/api/settings/fields`);
+        console.log(`  - GET    http://localhost:${this.port}/api/settings/credentials`);
+        console.log(`  - PUT    http://localhost:${this.port}/api/settings/credentials`);
+        console.log(`  - DELETE http://localhost:${this.port}/api/settings/credentials/:exchange`);
+        console.log(`  - GET    http://localhost:${this.port}/api/settings/server-ip`);
+        console.log(`  - POST   http://localhost:${this.port}/api/settings/server-ip/refresh`);
       });
 
       return this.server;

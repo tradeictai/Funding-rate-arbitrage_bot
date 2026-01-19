@@ -419,47 +419,49 @@ class ExitManager {
 
       const leverage = Number(position.details.coindcxPosition.leverage) || 10;
       // If exitPrice provided, use limit order for partial/full close (opposite side)
-      if (exitPrice) {
-        const size = Math.abs(
-          position.details.coindcxPosition.active_pos ||
-            position.details.coindcxPosition.size ||
-            0
-        );
-        const sideToClose =
-          position.details.coindcxPosition.side === "SHORT" ? "buy" : "sell"; // Opposite
-        // const roundedPrice = Math.round(Number(exitPrice) * 1000000) / 1000000;
 
-        const orderParams = {
-          order: {
-            pair: pair,
-            side: sideToClose,
-            order_type: "market_order",
-            total_quantity: size,
-            price: exitPrice,
-            leverage: leverage,
-            notification: "no_notification",
-            position_margin_type: position.margin_type || "crossed",
-            margin_currency_short_name:
-              position.margin_currency_short_name || "USDT",
-          },
-        };
+      const size = Math.abs(
+        position.details.coindcxPosition.active_pos ||
+        position.details.coindcxPosition.size ||
+        0
+      );
+      const sideToClose =
+        position.details.coindcxPosition.side === "SHORT" ? "buy" : "sell"; // Opposite
+      // const roundedPrice = Math.round(Number(exitPrice) * 1000000) / 1000000;
 
-        const result = await coindcxAPI.placeOrder(orderParams);
-
-        console.log("✅ CoinDCX limit exit order placed");
-
-        return {
-          success: true,
-          exchange: "coindcx",
-          orderId: result.id,
-          symbol: pair,
+      const orderParams = {
+        order: {
+          pair: pair,
           side: sideToClose,
-          quantity: size,
-          orderType: "limit",
-          exitPrice,
-          result,
-        };
-      }
+          order_type: "market_order",
+          total_quantity: size,
+          // price: exitPrice,
+          leverage: leverage,
+          notification: "no_notification",
+          position_margin_type: position.margin_type || "crossed",
+          margin_currency_short_name:
+            position.margin_currency_short_name || "USDT",
+        },
+      };
+
+
+
+      const result = await coindcxAPI.placeOrder(orderParams);
+
+      console.log("✅ CoinDCX limit exit order placed");
+
+      return {
+        success: true,
+        exchange: "coindcx",
+        orderId: result.id,
+        symbol: pair,
+        side: sideToClose,
+        quantity: size,
+        orderType: "limit",
+        // exitPrice,
+        result,
+      };
+
 
       // Market full close via Exit endpoint
       // console.log(`   Using Market Exit for full position close`);
@@ -604,9 +606,9 @@ class ExitManager {
 
       // Check which positions exist
       const hasDeltaPosition = trade.details?.deltaPosition?.size &&
-                              Math.abs(trade.details.deltaPosition.size) > 0;
+        Math.abs(trade.details.deltaPosition.size) > 0;
       const hasCoindcxPosition = trade.details?.coindcxPosition?.size &&
-                                Math.abs(trade.details.coindcxPosition.size) > 0;
+        Math.abs(trade.details.coindcxPosition.size) > 0;
 
       console.log(`   Delta Position: ${hasDeltaPosition ? 'Active' : 'None'}`);
       console.log(`   CoinDCX Position: ${hasCoindcxPosition ? 'Active' : 'None'}`);
@@ -630,7 +632,7 @@ class ExitManager {
 
       // Check if any actual exit failed
       const hadFailure = (hasDeltaPosition && !deltaExit.success) ||
-                        (hasCoindcxPosition && !coindcxExit.success);
+        (hasCoindcxPosition && !coindcxExit.success);
 
       if (hadFailure) {
         console.error("\n❌ CRITICAL: One or more emergency exit orders failed:");

@@ -36,6 +36,8 @@ class TradeMonitor extends EventEmitter {
 
     this.liquidationWarningThreshold = 0.03; // 3% from liquidation
 
+    this.bufferPercentForLiquidationProtection = config.trading.bufferPercentForLiquidationProtection || 30; // 30%
+
     this.flipCheckTimer = null;
 
     this.leverage = config.trading.leverage;
@@ -308,7 +310,8 @@ class TradeMonitor extends EventEmitter {
     if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return false;
 
     // 🔴 30% buffer rakhna hai liquidation se pehle
-    const bufferPercent = 30;
+    // const bufferPercent = 30;
+    const bufferPercent = this.bufferPercentForLiquidationProtection ;
 
     const deltaLeverage = this.leverage || 10;
     const coindcxLeverage = this.leverage || 10;

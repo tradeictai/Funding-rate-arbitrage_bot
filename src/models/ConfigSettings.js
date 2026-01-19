@@ -7,6 +7,34 @@
 export const configSettingsSchema = {
   _id: "trading_config", // Single document pattern
 
+  // Bot Server Info
+  botServerIp: {
+    type: String,
+    default: "",
+  },
+  botServerLastSeen: {
+    type: Date,
+    default: null,
+  },
+
+  // API Credentials (encrypted/secured)
+  deltaApiKey: {
+    type: String,
+    default: "",
+  },
+  deltaApiSecret: {
+    type: String,
+    default: "",
+  },
+  coindcxApiKey: {
+    type: String,
+    default: "",
+  },
+  coindcxApiSecret: {
+    type: String,
+    default: "",
+  },
+
   // Trading Parameters
   leverage: {
     type: Number,
@@ -83,6 +111,14 @@ export const configSettingsSchema = {
     max: 1440, // 24 hours
   },
 
+  // Liquidation Protection
+  bufferPercentForLiquidationProtection: {
+    type: Number,
+    default: 30,
+    min: 5,
+    max: 50,
+  },
+
   // Metadata
   updatedAt: {
     type: Date,
@@ -99,17 +135,27 @@ export const configSettingsSchema = {
  */
 export const defaultConfigValues = {
   _id: "trading_config",
+  // Bot Server Info
+  botServerIp: "",
+  botServerLastSeen: null,
+  // API Credentials (empty by default - uses .env fallback)
+  deltaApiKey: process.env.DELTA_API_KEY || "",
+  deltaApiSecret: process.env.DELTA_API_SECRET || "",
+  coindcxApiKey: process.env.COINDCX_API_KEY || "",
+  coindcxApiSecret: process.env.COINDCX_API_SECRET || "",
+  // Trading Parameters
   leverage: 10,
-  useFundPct: 0.70,
-  primaryThreshold: 0.1,
-  secondaryThreshold: 0.15,
+  useFundPct: 0.1,
+  primaryThreshold: 0.05,
+  secondaryThreshold: 0.05,
   preFundingWindowMinutes: 5,
   maxPositionSizeUSD: 1000,
   minPositionSizeUSD: 0.5,
   minLiquidityMultiplier: 3.0,
   maxSlippagePct: 0.1,
-  orderbookDepth: 20,
+  orderbookDepth: 50,
   orderCooldownMinutes: 5,
+  bufferPercentForLiquidationProtection: 30,
   updatedAt: new Date(),
   updatedBy: "system",
 };
@@ -119,6 +165,28 @@ export const defaultConfigValues = {
  */
 export const validateConfig = (config) => {
   const errors = [];
+
+  // API Key validations (basic format check)
+  if (config.deltaApiKey !== undefined && config.deltaApiKey !== "") {
+    if (typeof config.deltaApiKey !== "string" || config.deltaApiKey.length < 10) {
+      errors.push("deltaApiKey must be a valid API key (at least 10 characters)");
+    }
+  }
+  if (config.deltaApiSecret !== undefined && config.deltaApiSecret !== "") {
+    if (typeof config.deltaApiSecret !== "string" || config.deltaApiSecret.length < 10) {
+      errors.push("deltaApiSecret must be a valid API secret (at least 10 characters)");
+    }
+  }
+  if (config.coindcxApiKey !== undefined && config.coindcxApiKey !== "") {
+    if (typeof config.coindcxApiKey !== "string" || config.coindcxApiKey.length < 10) {
+      errors.push("coindcxApiKey must be a valid API key (at least 10 characters)");
+    }
+  }
+  if (config.coindcxApiSecret !== undefined && config.coindcxApiSecret !== "") {
+    if (typeof config.coindcxApiSecret !== "string" || config.coindcxApiSecret.length < 10) {
+      errors.push("coindcxApiSecret must be a valid API secret (at least 10 characters)");
+    }
+  }
 
   // Leverage validation
   if (config.leverage !== undefined) {
@@ -199,6 +267,13 @@ export const validateConfig = (config) => {
   if (config.preFundingWindowMinutes !== undefined) {
     if (config.preFundingWindowMinutes < 1 || config.preFundingWindowMinutes > 60) {
       errors.push("preFundingWindowMinutes must be between 1 and 60");
+    }
+  }
+
+  // Liquidation buffer validation
+  if (config.bufferPercentForLiquidationProtection !== undefined) {
+    if (config.bufferPercentForLiquidationProtection < 5 || config.bufferPercentForLiquidationProtection > 50) {
+      errors.push("bufferPercentForLiquidationProtection must be between 5 and 50");
     }
   }
 

@@ -2,6 +2,52 @@ import ArbitrageEngine from "./core/arbitrageEngine.js";
 import WebSocketServer from "./server/websocketServer.js";
 import APIServer from "./server/apiServer.js";
 import { loadConfigFromDB } from "./config/configLoader.js";
+import https from "https";
+import configService from "./services/configService.js";
+
+/**
+ * Detect and store bot server public IP on startup
+ */
+async function detectAndStoreServerIP() {
+  try {
+    console.log("🌐 Detecting bot server IP address...");
+
+    const ip = await new Promise((resolve, reject) => {
+      https.get("https://api.ipify.org?format=json", { timeout: 10000 }, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(data).ip);
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }).on("error", reject);
+    });
+
+    if (ip) {
+      await configService.updateConfig({
+        botServerIp: ip,
+        botServerLastSeen: new Date(),
+      }, "system");
+
+      console.log("╔════════════════════════════════════════════════════════════╗");
+      console.log("║  🌐 BOT SERVER IP DETECTED                                 ║");
+      console.log("╠════════════════════════════════════════════════════════════╣");
+      console.log(`║  IP Address: ${ip.padEnd(45)}║`);
+      console.log("║                                                            ║");
+      console.log("║  ⚠️  Whitelist this IP on your exchange accounts:         ║");
+      console.log("║     - Delta Exchange API Settings                          ║");
+      console.log("║     - CoinDCX API Settings                                 ║");
+      console.log("╚════════════════════════════════════════════════════════════╝");
+      console.log("");
+    }
+  } catch (error) {
+    console.warn("⚠️  Could not detect server IP:", error.message);
+    console.warn("   You can manually check via API: GET /api/settings/server-ip");
+  }
+}
 
 /**
  * Main Entry Point for Funding Rate Arbitrage System
@@ -24,6 +70,9 @@ async function main() {
   console.log("📝 Loading configuration from database...");
   await loadConfigFromDB();
   console.log("✅ Configuration loaded\n");
+
+  // Detect and store server IP for exchange whitelisting
+  await detectAndStoreServerIP();
 
   const engine = new ArbitrageEngine();
 
