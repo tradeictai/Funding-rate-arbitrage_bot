@@ -890,7 +890,7 @@ class TradeMonitor extends EventEmitter {
     console.log("\n🔍 POSITION EXISTENCE CHECK");
     console.log("─".repeat(60));
 
-    const ONE_SIDED_TIMEOUT_MS = 2000; // 30 seconds
+    const ONE_SIDED_TIMEOUT_MS = 20000; // 30 seconds
     const now = Date.now();
 
     // Verify via REST API periodically
@@ -974,7 +974,7 @@ class TradeMonitor extends EventEmitter {
 
   async verifyPositionsViaREST() {
   const now = Date.now();
-  const MIN_INTERVAL = 5000; // 5 seconds
+  const MIN_INTERVAL = 10000; // 5 seconds
 
   if (now - this.lastRestVerificationTime < MIN_INTERVAL) {
     return;
