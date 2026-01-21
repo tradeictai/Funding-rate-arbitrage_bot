@@ -36,7 +36,8 @@ class TradeMonitor extends EventEmitter {
 
     this.liquidationWarningThreshold = 0.03; // 3% from liquidation
 
-    this.bufferPercentForLiquidationProtection = config.trading.bufferPercentForLiquidationProtection || 30; // 30%
+    this.bufferPercentForLiquidationProtection =
+      config.trading.bufferPercentForLiquidationProtection || 30; // 30%
 
     this.flipCheckTimer = null;
 
@@ -48,7 +49,6 @@ class TradeMonitor extends EventEmitter {
     this.oneSidedDetectedAt = null;
 
     this.lastRestVerificationTime = 0;
-
 
     this.setupEventHandlers();
   }
@@ -77,7 +77,7 @@ class TradeMonitor extends EventEmitter {
         this.checkForNormalExit();
         this.performFlipCheck();
         this.checkPreLiquidation();
-        this.checkPositionExistence()
+        this.checkPositionExistence();
       }
     });
 
@@ -86,7 +86,7 @@ class TradeMonitor extends EventEmitter {
         this.checkForNormalExit();
         this.performFlipCheck();
         this.checkPreLiquidation();
-        this.checkPositionExistence()
+        this.checkPositionExistence();
       }
     });
   }
@@ -122,7 +122,9 @@ class TradeMonitor extends EventEmitter {
     }
 
     // Fallback to active_pos or positionAmount (can be negative for shorts)
-    const size = parseFloat(position.active_pos || position.positionAmount || 0);
+    const size = parseFloat(
+      position.active_pos || position.positionAmount || 0,
+    );
     return Math.abs(size);
   }
 
@@ -130,14 +132,20 @@ class TradeMonitor extends EventEmitter {
    * Check if Delta position is active
    */
   hasDeltaPosition() {
-    return this.latestDeltaPosition && this.getDeltaPositionSize(this.latestDeltaPosition) > 0;
+    return (
+      this.latestDeltaPosition &&
+      this.getDeltaPositionSize(this.latestDeltaPosition) > 0
+    );
   }
 
   /**
    * Check if CoinDCX position is active
    */
   hasCoindcxPosition() {
-    return this.latestCoindcxPosition && this.getCoindcxPositionSize(this.latestCoindcxPosition) > 0;
+    return (
+      this.latestCoindcxPosition &&
+      this.getCoindcxPositionSize(this.latestCoindcxPosition) > 0
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -150,8 +158,8 @@ class TradeMonitor extends EventEmitter {
     console.log(`\n🔔 Delta Position Event: ${type.toUpperCase()}`);
 
     // Handle delete/close events
-    if (type === 'delete' || type === 'closed' || type === 'liquidated') {
-      console.log('   ⚠️ Position closed/deleted!');
+    if (type === "delete" || type === "closed" || type === "liquidated") {
+      console.log("   ⚠️ Position closed/deleted!");
       this.handleDeltaPositionClosed({ type, position, reason: type });
       return;
     }
@@ -164,8 +172,8 @@ class TradeMonitor extends EventEmitter {
 
     // If size is 0, treat as closed
     if (size === 0) {
-      console.log('   ⚠️ Position size is 0 - treating as closed');
-      this.handleDeltaPositionClosed({ type: 'zero_size', position });
+      console.log("   ⚠️ Position size is 0 - treating as closed");
+      this.handleDeltaPositionClosed({ type: "zero_size", position });
       return;
     }
 
@@ -175,7 +183,6 @@ class TradeMonitor extends EventEmitter {
     if (this.latestCoindcxPosition) {
       await this.runAllChecks();
     }
-
 
     // Position existence is now checked periodically by interval timer
     this.checkPositionExistence();
@@ -187,8 +194,8 @@ class TradeMonitor extends EventEmitter {
     console.log(`\n🔔 CoinDCX Position Event: ${type.toUpperCase()}`);
 
     // Handle delete/close events
-    if (type === 'delete' || type === 'closed' || type === 'liquidated') {
-      console.log('   ⚠️ Position closed/deleted!');
+    if (type === "delete" || type === "closed" || type === "liquidated") {
+      console.log("   ⚠️ Position closed/deleted!");
       this.handleCoindcxPositionClosed({ type, position, reason: type });
       return;
     }
@@ -201,8 +208,8 @@ class TradeMonitor extends EventEmitter {
 
     // If size is 0, treat as closed
     if (size === 0) {
-      console.log('   ⚠️ Position size is 0 - treating as closed');
-      this.handleCoindcxPositionClosed({ type: 'zero_size', position });
+      console.log("   ⚠️ Position size is 0 - treating as closed");
+      this.handleCoindcxPositionClosed({ type: "zero_size", position });
       return;
     }
 
@@ -225,7 +232,7 @@ class TradeMonitor extends EventEmitter {
     this.checkPreLiquidation();
     this.performFlipCheck();
     this.checkForNormalExit();
-    this.checkPositionExistence()
+    this.checkPositionExistence();
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -233,22 +240,22 @@ class TradeMonitor extends EventEmitter {
   // ═══════════════════════════════════════════════════════════════
 
   handleDeltaPositionClosed(data) {
-    console.log('\n🔴 DELTA POSITION CLOSED DETECTED');
-    console.log('='.repeat(60));
-    console.log(`   Reason: ${data.reason || data.type || 'unknown'}`);
+    console.log("\n🔴 DELTA POSITION CLOSED DETECTED");
+    console.log("=".repeat(60));
+    console.log(`   Reason: ${data.reason || data.type || "unknown"}`);
 
     const previousPosition = this.latestDeltaPosition;
     this.latestDeltaPosition = null;
 
     // Check if CoinDCX still has position (one-sided scenario)
     if (this.hasCoindcxPosition()) {
-      console.log('⚠️ ONE-SIDED: CoinDCX still has position, Delta closed!');
+      console.log("⚠️ ONE-SIDED: CoinDCX still has position, Delta closed!");
 
       this.emergencyExit("emergencyExit", {
         reason: "ONE_SIDED_DELTA_CLOSED",
 
-        closedSide: 'Delta',
-        remainingSide: 'CoinDCX',
+        closedSide: "Delta",
+        remainingSide: "CoinDCX",
         closureReason: data.reason || data.type,
         closedPosition: previousPosition,
         deltaPosition: null,
@@ -257,26 +264,26 @@ class TradeMonitor extends EventEmitter {
         timestamp: new Date().toISOString(),
       });
     }
-    console.log('='.repeat(60));
+    console.log("=".repeat(60));
   }
 
   handleCoindcxPositionClosed(data) {
-    console.log('\n🔴 COINDCX POSITION CLOSED DETECTED');
-    console.log('='.repeat(60));
-    console.log(`   Reason: ${data.reason || data.type || 'unknown'}`);
+    console.log("\n🔴 COINDCX POSITION CLOSED DETECTED");
+    console.log("=".repeat(60));
+    console.log(`   Reason: ${data.reason || data.type || "unknown"}`);
 
     const previousPosition = this.latestCoindcxPosition;
     this.latestCoindcxPosition = null;
 
     // Check if Delta still has position (one-sided scenario)
     if (this.hasDeltaPosition()) {
-      console.log('⚠️ ONE-SIDED: Delta still has position, CoinDCX closed!');
+      console.log("⚠️ ONE-SIDED: Delta still has position, CoinDCX closed!");
 
       this.emergencyExit("emergencyExit", {
         reason: "ONE_SIDED_COINDCX_CLOSED",
 
-        closedSide: 'CoinDCX',
-        remainingSide: 'Delta',
+        closedSide: "CoinDCX",
+        remainingSide: "Delta",
         closureReason: data.reason || data.type,
         closedPosition: previousPosition,
         deltaPosition: this.latestDeltaPosition,
@@ -285,7 +292,7 @@ class TradeMonitor extends EventEmitter {
         timestamp: new Date().toISOString(),
       });
     }
-    console.log('='.repeat(60));
+    console.log("=".repeat(60));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -293,127 +300,195 @@ class TradeMonitor extends EventEmitter {
   // ═══════════════════════════════════════════════════════════════
 
   /**
- * 🛡️ LIQUIDATION PROTECTION CHECK
- * Leverage position data se dynamically extract hota hai
- */
+   * 🛡️ LIQUIDATION PROTECTION CHECK
+   * Leverage position data se dynamically extract hota hai
+   */
   /**
-  * 🛡️ LIQUIDATION PROTECTION CHECK - SIMPLE PRICE COMPARISON
-  * 
-  * Logic:
-  * 1. Difference = |Liquidation Price - Entry Price|
-  * 2. Buffer Amount = Difference × 10%
-  * 3. Exit Threshold Price = Liq Price ± Buffer (based on side)
-  * 4. Compare Mark Price with Exit Threshold Price
-  * 5. If crossed → EXIT!
-  */
+   * 🛡️ LIQUIDATION PROTECTION CHECK - SIMPLE PRICE COMPARISON
+   *
+   * Logic:
+   * 1. Difference = |Liquidation Price - Entry Price|
+   * 2. Buffer Amount = Difference × 10%
+   * 3. Exit Threshold Price = Liq Price ± Buffer (based on side)
+   * 4. Compare Mark Price with Exit Threshold Price
+   * 5. If crossed → EXIT!
+   */
   checkPreLiquidation() {
     if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return false;
 
     // 🔴 30% buffer rakhna hai liquidation se pehle
     // const bufferPercent = 30;
-    const bufferPercent = this.bufferPercentForLiquidationProtection ;
+    const bufferPercent = this.bufferPercentForLiquidationProtection;
 
     const deltaLeverage = this.leverage || 10;
     const coindcxLeverage = this.leverage || 10;
 
-    console.log('\n🛡️ LIQUIDATION PROTECTION CHECK (PRICE BASED)');
-    console.log('━'.repeat(70));
+    console.log("\n🛡️ LIQUIDATION PROTECTION CHECK (PRICE BASED)");
+    console.log("━".repeat(70));
     console.log(`   Delta Leverage:   ${deltaLeverage}x`);
     console.log(`   CoinDCX Leverage: ${coindcxLeverage}x`);
-    console.log(`   Buffer:           ${bufferPercent}% (Liq se ${bufferPercent}% pehle exit)`);
-    console.log('');
+    console.log(
+      `   Buffer:           ${bufferPercent}% (Liq se ${bufferPercent}% pehle exit)`,
+    );
+    console.log("");
 
     // Calculate for Delta
     const deltaResult = this.calculateExitThresholdPrice(
       this.latestDeltaPosition,
-      'delta',
+      "delta",
       bufferPercent,
-      deltaLeverage
+      deltaLeverage,
     );
 
     // Calculate for CoinDCX
     const coindcxResult = this.calculateExitThresholdPrice(
       this.latestCoindcxPosition,
-      'coindcx',
+      "coindcx",
       bufferPercent,
-      coindcxLeverage
+      coindcxLeverage,
     );
 
     // ═══════════════════════════════════════════════════════════════
     // DELTA POSITION LOG
     // ═══════════════════════════════════════════════════════════════
-    console.log(`   📊 DELTA (${deltaResult.side}) - ${deltaLeverage}x Leverage`);
-    console.log(`   ${'─'.repeat(60)}`);
-    console.log(`   Entry Price:           $${deltaResult.entryPrice.toFixed(8)}`);
-    console.log(`   Liquidation Price:     $${deltaResult.liquidationPrice.toFixed(8)}`);
-    console.log(`   Difference:            $${deltaResult.difference.toFixed(8)} (${deltaResult.differencePercent.toFixed(4)}%)`);
-    console.log(`   Buffer Amount (${bufferPercent}%):   $${deltaResult.bufferAmount.toFixed(8)}`);
-    console.log(`   Exit Threshold Price:  $${deltaResult.exitThresholdPrice.toFixed(8)} ← EXIT agar cross ho`);
-    console.log(`   Current Mark Price:    $${deltaResult.markPrice.toFixed(8)}`);
-    console.log(`   Distance to Exit:      $${deltaResult.distanceToExit.toFixed(8)} (${deltaResult.distanceToExitPercent.toFixed(4)}%)`);
+    console.log(
+      `   📊 DELTA (${deltaResult.side}) - ${deltaLeverage}x Leverage`,
+    );
+    console.log(`   ${"─".repeat(60)}`);
+    console.log(
+      `   Entry Price:           $${deltaResult.entryPrice.toFixed(8)}`,
+    );
+    console.log(
+      `   Liquidation Price:     $${deltaResult.liquidationPrice.toFixed(8)}`,
+    );
+    console.log(
+      `   Difference:            $${deltaResult.difference.toFixed(8)} (${deltaResult.differencePercent.toFixed(4)}%)`,
+    );
+    console.log(
+      `   Buffer Amount (${bufferPercent}%):   $${deltaResult.bufferAmount.toFixed(8)}`,
+    );
+    console.log(
+      `   Exit Threshold Price:  $${deltaResult.exitThresholdPrice.toFixed(8)} ← EXIT agar cross ho`,
+    );
+    console.log(
+      `   Current Mark Price:    $${deltaResult.markPrice.toFixed(8)}`,
+    );
+    console.log(
+      `   Distance to Exit:      $${deltaResult.distanceToExit.toFixed(8)} (${deltaResult.distanceToExitPercent.toFixed(4)}%)`,
+    );
 
-    if (deltaResult.side === 'LONG') {
-      console.log(`   Condition:             Mark ($${deltaResult.markPrice.toFixed(8)}) ${deltaResult.shouldExit ? '≤' : '>'} Exit ($${deltaResult.exitThresholdPrice.toFixed(8)})`);
+    if (deltaResult.side === "LONG") {
+      console.log(
+        `   Condition:             Mark ($${deltaResult.markPrice.toFixed(8)}) ${deltaResult.shouldExit ? "≤" : ">"} Exit ($${deltaResult.exitThresholdPrice.toFixed(8)})`,
+      );
     } else {
-      console.log(`   Condition:             Mark ($${deltaResult.markPrice.toFixed(8)}) ${deltaResult.shouldExit ? '≥' : '<'} Exit ($${deltaResult.exitThresholdPrice.toFixed(8)})`);
+      console.log(
+        `   Condition:             Mark ($${deltaResult.markPrice.toFixed(8)}) ${deltaResult.shouldExit ? "≥" : "<"} Exit ($${deltaResult.exitThresholdPrice.toFixed(8)})`,
+      );
     }
-    console.log(`   Status:                ${deltaResult.shouldExit ? '🔴 EXIT KARO!' : '✅ SAFE - HOLD'}`);
+    console.log(
+      `   Status:                ${deltaResult.shouldExit ? "🔴 EXIT KARO!" : "✅ SAFE - HOLD"}`,
+    );
 
     // ═══════════════════════════════════════════════════════════════
     // COINDCX POSITION LOG
     // ═══════════════════════════════════════════════════════════════
-    console.log(`\n   📊 COINDCX (${coindcxResult.side}) - ${coindcxLeverage}x Leverage`);
-    console.log(`   ${'─'.repeat(60)}`);
-    console.log(`   Entry Price:           $${coindcxResult.entryPrice.toFixed(8)}`);
-    console.log(`   Liquidation Price:     $${coindcxResult.liquidationPrice.toFixed(8)}`);
-    console.log(`   Difference:            $${coindcxResult.difference.toFixed(8)} (${coindcxResult.differencePercent.toFixed(4)}%)`);
-    console.log(`   Buffer Amount (${bufferPercent}%):   $${coindcxResult.bufferAmount.toFixed(8)}`);
-    console.log(`   Exit Threshold Price:  $${coindcxResult.exitThresholdPrice.toFixed(8)} ← EXIT agar cross ho`);
-    console.log(`   Current Mark Price:    $${coindcxResult.markPrice.toFixed(8)}`);
-    console.log(`   Distance to Exit:      $${coindcxResult.distanceToExit.toFixed(8)} (${coindcxResult.distanceToExitPercent.toFixed(4)}%)`);
+    console.log(
+      `\n   📊 COINDCX (${coindcxResult.side}) - ${coindcxLeverage}x Leverage`,
+    );
+    console.log(`   ${"─".repeat(60)}`);
+    console.log(
+      `   Entry Price:           $${coindcxResult.entryPrice.toFixed(8)}`,
+    );
+    console.log(
+      `   Liquidation Price:     $${coindcxResult.liquidationPrice.toFixed(8)}`,
+    );
+    console.log(
+      `   Difference:            $${coindcxResult.difference.toFixed(8)} (${coindcxResult.differencePercent.toFixed(4)}%)`,
+    );
+    console.log(
+      `   Buffer Amount (${bufferPercent}%):   $${coindcxResult.bufferAmount.toFixed(8)}`,
+    );
+    console.log(
+      `   Exit Threshold Price:  $${coindcxResult.exitThresholdPrice.toFixed(8)} ← EXIT agar cross ho`,
+    );
+    console.log(
+      `   Current Mark Price:    $${coindcxResult.markPrice.toFixed(8)}`,
+    );
+    console.log(
+      `   Distance to Exit:      $${coindcxResult.distanceToExit.toFixed(8)} (${coindcxResult.distanceToExitPercent.toFixed(4)}%)`,
+    );
 
-    if (coindcxResult.side === 'LONG') {
-      console.log(`   Condition:             Mark ($${coindcxResult.markPrice.toFixed(8)}) ${coindcxResult.shouldExit ? '≤' : '>'} Exit ($${coindcxResult.exitThresholdPrice.toFixed(8)})`);
+    if (coindcxResult.side === "LONG") {
+      console.log(
+        `   Condition:             Mark ($${coindcxResult.markPrice.toFixed(8)}) ${coindcxResult.shouldExit ? "≤" : ">"} Exit ($${coindcxResult.exitThresholdPrice.toFixed(8)})`,
+      );
     } else {
-      console.log(`   Condition:             Mark ($${coindcxResult.markPrice.toFixed(8)}) ${coindcxResult.shouldExit ? '≥' : '<'} Exit ($${coindcxResult.exitThresholdPrice.toFixed(8)})`);
+      console.log(
+        `   Condition:             Mark ($${coindcxResult.markPrice.toFixed(8)}) ${coindcxResult.shouldExit ? "≥" : "<"} Exit ($${coindcxResult.exitThresholdPrice.toFixed(8)})`,
+      );
     }
-    console.log(`   Status:                ${coindcxResult.shouldExit ? '🔴 EXIT KARO!' : '✅ SAFE - HOLD'}`);
+    console.log(
+      `   Status:                ${coindcxResult.shouldExit ? "🔴 EXIT KARO!" : "✅ SAFE - HOLD"}`,
+    );
 
     // ═══════════════════════════════════════════════════════════════
     // COMBINED SUMMARY
     // ═══════════════════════════════════════════════════════════════
     console.log(`\n   📊 SUMMARY`);
-    console.log(`   ${'─'.repeat(60)}`);
-    console.log(`   Delta:   Mark $${deltaResult.markPrice.toFixed(8)} | Exit Threshold $${deltaResult.exitThresholdPrice.toFixed(8)} → ${deltaResult.shouldExit ? '🔴 EXIT' : '✅ HOLD'}`);
-    console.log(`   CoinDCX: Mark $${coindcxResult.markPrice.toFixed(8)} | Exit Threshold $${coindcxResult.exitThresholdPrice.toFixed(8)} → ${coindcxResult.shouldExit ? '🔴 EXIT' : '✅ HOLD'}`);
+    console.log(`   ${"─".repeat(60)}`);
+    console.log(
+      `   Delta:   Mark $${deltaResult.markPrice.toFixed(8)} | Exit Threshold $${deltaResult.exitThresholdPrice.toFixed(8)} → ${deltaResult.shouldExit ? "🔴 EXIT" : "✅ HOLD"}`,
+    );
+    console.log(
+      `   CoinDCX: Mark $${coindcxResult.markPrice.toFixed(8)} | Exit Threshold $${coindcxResult.exitThresholdPrice.toFixed(8)} → ${coindcxResult.shouldExit ? "🔴 EXIT" : "✅ HOLD"}`,
+    );
 
     // ═══════════════════════════════════════════════════════════════
     // TRIGGER EXIT IF NEEDED
     // ═══════════════════════════════════════════════════════════════
     if (deltaResult.shouldExit || coindcxResult.shouldExit) {
-      const triggeringSide = deltaResult.shouldExit ? 'Delta' : 'CoinDCX';
-      const triggeringResult = deltaResult.shouldExit ? deltaResult : coindcxResult;
-      const triggeringLeverage = deltaResult.shouldExit ? deltaLeverage : coindcxLeverage;
+      const triggeringSide = deltaResult.shouldExit ? "Delta" : "CoinDCX";
+      const triggeringResult = deltaResult.shouldExit
+        ? deltaResult
+        : coindcxResult;
+      const triggeringLeverage = deltaResult.shouldExit
+        ? deltaLeverage
+        : coindcxLeverage;
 
-      console.log('\n   🚨🚨🚨 LIQUIDATION PROTECTION EXIT TRIGGERED 🚨🚨🚨');
-      console.log('   ' + '='.repeat(60));
+      console.log("\n   🚨🚨🚨 LIQUIDATION PROTECTION EXIT TRIGGERED 🚨🚨🚨");
+      console.log("   " + "=".repeat(60));
       console.log(`   Triggering Side:       ${triggeringSide}`);
       console.log(`   Position Type:         ${triggeringResult.side}`);
       console.log(`   Leverage:              ${triggeringLeverage}x`);
-      console.log(`   Entry Price:           $${triggeringResult.entryPrice.toFixed(8)}`);
-      console.log(`   Liquidation Price:     $${triggeringResult.liquidationPrice.toFixed(8)}`);
-      console.log(`   Exit Threshold Price:  $${triggeringResult.exitThresholdPrice.toFixed(8)}`);
-      console.log(`   Current Mark Price:    $${triggeringResult.markPrice.toFixed(8)}`);
+      console.log(
+        `   Entry Price:           $${triggeringResult.entryPrice.toFixed(8)}`,
+      );
+      console.log(
+        `   Liquidation Price:     $${triggeringResult.liquidationPrice.toFixed(8)}`,
+      );
+      console.log(
+        `   Exit Threshold Price:  $${triggeringResult.exitThresholdPrice.toFixed(8)}`,
+      );
+      console.log(
+        `   Current Mark Price:    $${triggeringResult.markPrice.toFixed(8)}`,
+      );
       console.log(`   `);
 
-      if (triggeringResult.side === 'LONG') {
-        console.log(`   📍 REASON: Mark Price ($${triggeringResult.markPrice.toFixed(8)}) ≤ Exit Threshold ($${triggeringResult.exitThresholdPrice.toFixed(8)})`);
+      if (triggeringResult.side === "LONG") {
+        console.log(
+          `   📍 REASON: Mark Price ($${triggeringResult.markPrice.toFixed(8)}) ≤ Exit Threshold ($${triggeringResult.exitThresholdPrice.toFixed(8)})`,
+        );
       } else {
-        console.log(`   📍 REASON: Mark Price ($${triggeringResult.markPrice.toFixed(8)}) ≥ Exit Threshold ($${triggeringResult.exitThresholdPrice.toFixed(8)})`);
+        console.log(
+          `   📍 REASON: Mark Price ($${triggeringResult.markPrice.toFixed(8)}) ≥ Exit Threshold ($${triggeringResult.exitThresholdPrice.toFixed(8)})`,
+        );
       }
-      console.log(`   📍 MATLAB: Price ne ${bufferPercent}% buffer zone cross kar diya!`);
+      console.log(
+        `   📍 MATLAB: Price ne ${bufferPercent}% buffer zone cross kar diya!`,
+      );
       console.log(`   📍 ACTION: EXIT to avoid liquidation & fees`);
-      console.log('   ' + '='.repeat(60));
+      console.log("   " + "=".repeat(60));
 
       this.emergencyExit("emergencyExit", {
         reason: "LIQUIDATION_PROTECTION",
@@ -454,20 +529,20 @@ class TradeMonitor extends EventEmitter {
 
     console.log(`\n   ✅ DONO POSITIONS SAFE HAIN`);
     console.log(`   Mark Price exit threshold se door hai - HOLD karo`);
-    console.log('━'.repeat(70));
+    console.log("━".repeat(70));
 
     return false;
   }
 
   /**
    * Calculate Exit Threshold Price
-   * 
+   *
    * Formula:
    * - Difference = |Liquidation Price - Entry Price|
    * - Buffer Amount = Difference × (bufferPercent / 100)
    * - For LONG: Exit Threshold = Liquidation Price + Buffer Amount
    * - For SHORT: Exit Threshold = Liquidation Price - Buffer Amount
-   * 
+   *
    * Exit Condition:
    * - For LONG: Mark Price ≤ Exit Threshold → EXIT
    * - For SHORT: Mark Price ≥ Exit Threshold → EXIT
@@ -483,9 +558,9 @@ class TradeMonitor extends EventEmitter {
       exitThresholdPrice: 0,
       distanceToExit: 0,
       distanceToExitPercent: 0,
-      side: 'UNKNOWN',
+      side: "UNKNOWN",
       leverage: leverage,
-      shouldExit: false
+      shouldExit: false,
     };
 
     if (!position) return defaultResult;
@@ -495,35 +570,46 @@ class TradeMonitor extends EventEmitter {
     // ═══════════════════════════════════════════════════════════════
     // EXTRACT POSITION DATA
     // ═══════════════════════════════════════════════════════════════
-    if (exchange === 'delta') {
+    if (exchange === "delta") {
       entryPrice = parseFloat(position.entry_price || 0);
       markPrice = parseFloat(position.mark_price || 0);
       liquidationPrice = parseFloat(position.liquidation_price || 0);
-      side = (position.side || '').toUpperCase();
+      side = (position.side || "").toUpperCase();
     } else {
       entryPrice = parseFloat(position.avg_price || 0);
       markPrice = parseFloat(position.mark_price || 0);
       liquidationPrice = parseFloat(position.liquidation_price || 0);
-      side = (position.side || '').toUpperCase();
+      side = (position.side || "").toUpperCase();
 
       // CoinDCX crossed margin ke liye calculate karo if not provided
       if (liquidationPrice === 0 && entryPrice > 0) {
         const maintenanceMarginRate = 0.004;
 
-        if (side === 'SHORT') {
-          liquidationPrice = entryPrice * (1 + (1 / leverage) - maintenanceMarginRate);
-        } else if (side === 'LONG') {
-          liquidationPrice = entryPrice * (1 - (1 / leverage) + maintenanceMarginRate);
+        if (side === "SHORT") {
+          liquidationPrice =
+            entryPrice * (1 + 1 / leverage - maintenanceMarginRate);
+        } else if (side === "LONG") {
+          liquidationPrice =
+            entryPrice * (1 - 1 / leverage + maintenanceMarginRate);
         }
 
-        console.log(`   ℹ️ CoinDCX: Calculated Liq Price: $${liquidationPrice.toFixed(8)} (${leverage}x)`);
+        console.log(
+          `   ℹ️ CoinDCX: Calculated Liq Price: $${liquidationPrice.toFixed(8)} (${leverage}x)`,
+        );
       }
     }
 
     // Validate data
     if (!entryPrice || !markPrice || !liquidationPrice) {
       console.log(`   ⚠️ ${exchange}: Missing prices`);
-      return { ...defaultResult, entryPrice, markPrice, liquidationPrice, side, leverage };
+      return {
+        ...defaultResult,
+        entryPrice,
+        markPrice,
+        liquidationPrice,
+        side,
+        leverage,
+      };
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -546,7 +632,7 @@ class TradeMonitor extends EventEmitter {
     let shouldExit = false;
     let distanceToExit = 0;
 
-    if (side === 'LONG') {
+    if (side === "LONG") {
       // LONG: Liquidation is BELOW entry
       // Exit Threshold = Liq Price + Buffer Amount
       exitThresholdPrice = liquidationPrice + bufferAmount;
@@ -558,8 +644,7 @@ class TradeMonitor extends EventEmitter {
       // Distance to exit (positive = safe, negative = should have exited)
       distanceToExit = markPrice - exitThresholdPrice;
       // distanceToExit = 0.0060033- exitThresholdPrice; // markPrice - exitThresholdPrice;
-
-    } else if (side === 'SHORT') {
+    } else if (side === "SHORT") {
       // SHORT: Liquidation is ABOVE entry
       // Exit Threshold = Liq Price - Buffer Amount
       exitThresholdPrice = liquidationPrice - bufferAmount;
@@ -569,10 +654,16 @@ class TradeMonitor extends EventEmitter {
 
       // Distance to exit (positive = safe, negative = should have exited)
       distanceToExit = exitThresholdPrice - markPrice;
-
     } else {
       console.log(`   ⚠️ ${exchange}: Unknown side "${side}"`);
-      return { ...defaultResult, entryPrice, markPrice, liquidationPrice, side, leverage };
+      return {
+        ...defaultResult,
+        entryPrice,
+        markPrice,
+        liquidationPrice,
+        side,
+        leverage,
+      };
     }
 
     const distanceToExitPercent = (distanceToExit / entryPrice) * 100;
@@ -589,7 +680,7 @@ class TradeMonitor extends EventEmitter {
       distanceToExitPercent,
       side,
       leverage,
-      shouldExit
+      shouldExit,
     };
   }
   /**
@@ -603,21 +694,23 @@ class TradeMonitor extends EventEmitter {
     const entryPrice = parseFloat(position.entry_price || 0);
 
     if (!markPrice || !liquidationPrice) {
-      console.log(`   ⚠️ Delta: Missing mark_price (${markPrice}) or liquidation_price (${liquidationPrice})`);
+      console.log(
+        `   ⚠️ Delta: Missing mark_price (${markPrice}) or liquidation_price (${liquidationPrice})`,
+      );
       return {
         shouldExit: false,
         distancePercent: 100,
         markPrice: markPrice || 0,
         liquidationPrice: liquidationPrice || 0,
         side,
-        entryPrice
+        entryPrice,
       };
     }
 
     // Calculate distance from mark price to liquidation price
     let distancePercent;
 
-    if (side === 'LONG') {
+    if (side === "LONG") {
       // For LONG: liquidation is BELOW mark price
       // Distance = (markPrice - liquidationPrice) / markPrice * 100
       distancePercent = ((markPrice - liquidationPrice) / markPrice) * 100;
@@ -627,7 +720,9 @@ class TradeMonitor extends EventEmitter {
       distancePercent = ((liquidationPrice - markPrice) / markPrice) * 100;
     }
 
-    console.log(`   ℹ️ Delta: Mark Price: $${markPrice}, Liq Price: $${liquidationPrice}, Distance: ${distancePercent.toFixed(4)}%`);
+    console.log(
+      `   ℹ️ Delta: Mark Price: $${markPrice}, Liq Price: $${liquidationPrice}, Distance: ${distancePercent.toFixed(4)}%`,
+    );
 
     // If distance is negative, we're already past liquidation (shouldn't happen)
     if (distancePercent < 0) {
@@ -638,11 +733,12 @@ class TradeMonitor extends EventEmitter {
         markPrice,
         liquidationPrice,
         side,
-        entryPrice
+        entryPrice,
       };
     }
 
-    const shouldExit = distancePercent <= (this.liquidationWarningThreshold * 100);
+    const shouldExit =
+      distancePercent <= this.liquidationWarningThreshold * 100;
 
     return {
       shouldExit,
@@ -650,7 +746,7 @@ class TradeMonitor extends EventEmitter {
       markPrice,
       liquidationPrice,
       side,
-      entryPrice
+      entryPrice,
     };
   }
 
@@ -668,7 +764,9 @@ class TradeMonitor extends EventEmitter {
 
     // For crossed margin, liquidation_price might be 0 - we need to calculate it
     if (liquidationPrice === 0 && entryPrice > 0) {
-      console.log(`   ℹ️ CoinDCX: Calculating liquidation price (crossed margin)`);
+      console.log(
+        `   ℹ️ CoinDCX: Calculating liquidation price (crossed margin)`,
+      );
 
       // Approximate liquidation price calculation
       // For isolated margin: liq_price ≈ entry * (1 ± 1/leverage)
@@ -676,17 +774,21 @@ class TradeMonitor extends EventEmitter {
 
       const maintenanceMarginRate = 0.004; // 0.4% typical for CoinDCX
 
-      if (side === 'SHORT') {
+      if (side === "SHORT") {
         // Short liquidation: price goes UP
         // liq_price ≈ entry * (1 + 1/leverage - maintenanceMarginRate)
-        liquidationPrice = entryPrice * (1 + (1 / leverage) - maintenanceMarginRate);
+        liquidationPrice =
+          entryPrice * (1 + 1 / leverage - maintenanceMarginRate);
       } else {
         // Long liquidation: price goes DOWN
         // liq_price ≈ entry * (1 - 1/leverage + maintenanceMarginRate)
-        liquidationPrice = entryPrice * (1 - (1 / leverage) + maintenanceMarginRate);
+        liquidationPrice =
+          entryPrice * (1 - 1 / leverage + maintenanceMarginRate);
       }
 
-      console.log(`   ℹ️ Calculated Liq Price: $${liquidationPrice.toFixed(8)}`);
+      console.log(
+        `   ℹ️ Calculated Liq Price: $${liquidationPrice.toFixed(8)}`,
+      );
     }
 
     if (!markPrice) {
@@ -699,14 +801,14 @@ class TradeMonitor extends EventEmitter {
         side,
         entryPrice,
         leverage,
-        marginType
+        marginType,
       };
     }
 
     // Calculate distance from mark price to liquidation price
     let distancePercent;
 
-    if (side === 'LONG') {
+    if (side === "LONG") {
       // For LONG: liquidation is BELOW mark price
       distancePercent = ((markPrice - liquidationPrice) / markPrice) * 100;
     } else {
@@ -714,7 +816,9 @@ class TradeMonitor extends EventEmitter {
       distancePercent = ((liquidationPrice - markPrice) / markPrice) * 100;
     }
 
-    console.log(`   ℹ️ CoinDCX: Mark Price: $${markPrice}, Liq Price: $${liquidationPrice}, Distance: ${distancePercent.toFixed(4)}%`);
+    console.log(
+      `   ℹ️ CoinDCX: Mark Price: $${markPrice}, Liq Price: $${liquidationPrice}, Distance: ${distancePercent.toFixed(4)}%`,
+    );
     // If distance is negative, we're past liquidation
     if (distancePercent < 0) {
       console.log(`   🔴 CoinDCX: PAST LIQUIDATION PRICE!`);
@@ -726,11 +830,12 @@ class TradeMonitor extends EventEmitter {
         side,
         entryPrice,
         leverage,
-        marginType
+        marginType,
       };
     }
 
-    const shouldExit = distancePercent <= (this.liquidationWarningThreshold * 100);
+    const shouldExit =
+      distancePercent <= this.liquidationWarningThreshold * 100;
 
     return {
       shouldExit,
@@ -740,7 +845,7 @@ class TradeMonitor extends EventEmitter {
       side,
       entryPrice,
       leverage,
-      marginType
+      marginType,
     };
   }
 
@@ -749,7 +854,7 @@ class TradeMonitor extends EventEmitter {
 
     const deltaSize = Math.abs(deltaPosition.size || 0);
     const deltaContractValue = parseFloat(
-      deltaPosition.product?.contract_value || 1
+      deltaPosition.product?.contract_value || 1,
     );
     const deltaQuantity = deltaSize * deltaContractValue;
     const coindcxQuantity = Math.abs(coindcxPosition.positionAmount || 0);
@@ -758,8 +863,8 @@ class TradeMonitor extends EventEmitter {
     console.log("=".repeat(60));
     console.log(
       `Delta: ${deltaQuantity.toFixed(
-        4
-      )} (${deltaSize} × ${deltaContractValue})`
+        4,
+      )} (${deltaSize} × ${deltaContractValue})`,
     );
     console.log(`Coindcx:  ${coindcxQuantity.toFixed(4)}`);
 
@@ -769,8 +874,8 @@ class TradeMonitor extends EventEmitter {
 
     console.log(
       `Difference: ${qtyDiff.toFixed(4)} (${qtyDiffPct.toFixed(
-        2
-      )}%) | Tolerance: ${(this.quantityTolerance * 100).toFixed(1)}%`
+        2,
+      )}%) | Tolerance: ${(this.quantityTolerance * 100).toFixed(1)}%`,
     );
 
     if (qtyDiffPct > this.quantityTolerance * 100) {
@@ -786,8 +891,9 @@ class TradeMonitor extends EventEmitter {
       });
 
       await this.emergencyExit("QUANTITY_MISMATCH", {
-        reason: `Quantity mismatch exceeds ${this.quantityTolerance * 100
-          }% tolerance`,
+        reason: `Quantity mismatch exceeds ${
+          this.quantityTolerance * 100
+        }% tolerance`,
         deltaQuantity,
         coindcxQuantity,
         qtyDiffPct,
@@ -807,10 +913,8 @@ class TradeMonitor extends EventEmitter {
     // const coindcxSymbol =
     //   this.latestCoindcxPosition.symbol ||
     //   this.latestCoindcxPosition.contractPair;
-
     // const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
     // const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
-
     // if (!deltaFRData || !coindcxFRData) {
     //   console.log("⏳ Waiting for both funding rates...");
     //   console.log(
@@ -823,18 +927,14 @@ class TradeMonitor extends EventEmitter {
     //   );
     //   return;
     // }
-
     // // Both rates are stored as decimals, convert to percentage
     // const FR_delta = deltaFRData.rate;
     // const FR_coindcx = coindcxFRData.rate;
-
     // console.log("\n🔄 FLIP SAFETY CHECK");
     // console.log("─".repeat(60));
     // console.log(`Delta FR:  ${FR_delta.toFixed(4)}%`);
     // console.log(`Coindcx FR:   ${FR_coindcx.toFixed(4)}%`);
-
     // let FR_first, FR_second, exchange_first, exchange_second;
-
     // if (Math.abs(FR_delta) >= Math.abs(FR_coindcx)) {
     //   FR_first = FR_delta;
     //   FR_second = FR_coindcx;
@@ -846,27 +946,22 @@ class TradeMonitor extends EventEmitter {
     //   exchange_first = "Coindcx";
     //   exchange_second = "Delta";
     // }
-
     // const diff = this.calculateFundingDifference(FR_first, FR_second);
-
     // console.log(
     //   `Funding Rate Diff (${exchange_first} - ${exchange_second}): ${diff.toFixed(
     //     4
     //   )}%`
     // );
     // console.log(`Threshold: ${this.minProfitThreshold * 100}%`);
-
     // if (diff < this.minProfitThreshold * 100) {
     //   console.log("❌ FLIP DETECTED → EMERGENCY EXIT");
     //   console.log("─".repeat(60));
-
     //   this.emit("flip", {
     //     diff,
     //     threshold: this.minProfitThreshold * 100,
     //     FR_delta,
     //     FR_coindcx,
     //   });
-
     //   this.emergencyExit("FLIP_DETECTED", {
     //     reason: `Funding profit dropped to ${diff.toFixed(4)}% < threshold ${this.minProfitThreshold * 100
     //       }%`,
@@ -899,16 +994,24 @@ class TradeMonitor extends EventEmitter {
     const hasDelta = this.hasDeltaPosition();
     const hasCoindcx = this.hasCoindcxPosition();
 
-    console.log(`   Delta:   ${hasDelta ? '✅ Active' : '❌ Missing'}`);
+    console.log(`   Delta:   ${hasDelta ? "✅ Active" : "❌ Missing"}`);
     if (hasDelta) {
-      console.log(`            Symbol: ${this.latestDeltaPosition.product_symbol}`);
-      console.log(`            Size: ${this.getDeltaPositionSize(this.latestDeltaPosition)}`);
+      console.log(
+        `            Symbol: ${this.latestDeltaPosition.product_symbol}`,
+      );
+      console.log(
+        `            Size: ${this.getDeltaPositionSize(this.latestDeltaPosition)}`,
+      );
     }
 
-    console.log(`   CoinDCX: ${hasCoindcx ? '✅ Active' : '❌ Missing'}`);
+    console.log(`   CoinDCX: ${hasCoindcx ? "✅ Active" : "❌ Missing"}`);
     if (hasCoindcx) {
-      console.log(`            Symbol: ${this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.pair}`);
-      console.log(`            Size: ${this.getCoindcxPositionSize(this.latestCoindcxPosition)}`);
+      console.log(
+        `            Symbol: ${this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.pair}`,
+      );
+      console.log(
+        `            Size: ${this.getCoindcxPositionSize(this.latestCoindcxPosition)}`,
+      );
     }
 
     // Both positions active - reset timer
@@ -934,10 +1037,14 @@ class TradeMonitor extends EventEmitter {
     // One-sided detected
     if (!this.oneSidedDetectedAt) {
       this.oneSidedDetectedAt = now;
-      const activeSide = hasDelta ? 'Delta' : 'CoinDCX';
-      const missingSide = hasDelta ? 'CoinDCX' : 'Delta';
-      console.log(`   ⚠️ ONE-SIDED: ${activeSide} active, ${missingSide} missing!`);
-      console.log(`   ⏱️ Starting ${ONE_SIDED_TIMEOUT_MS / 1000}s grace period...`);
+      const activeSide = hasDelta ? "Delta" : "CoinDCX";
+      const missingSide = hasDelta ? "CoinDCX" : "Delta";
+      console.log(
+        `   ⚠️ ONE-SIDED: ${activeSide} active, ${missingSide} missing!`,
+      );
+      console.log(
+        `   ⏱️ Starting ${ONE_SIDED_TIMEOUT_MS / 1000}s grace period...`,
+      );
       console.log("─".repeat(60));
       return;
     }
@@ -945,14 +1052,16 @@ class TradeMonitor extends EventEmitter {
     const timeSinceDetection = now - this.oneSidedDetectedAt;
     const remainingMs = ONE_SIDED_TIMEOUT_MS - timeSinceDetection;
 
-    console.log(`   ⏱️ One-sided for ${(timeSinceDetection / 1000).toFixed(0)}s`);
+    console.log(
+      `   ⏱️ One-sided for ${(timeSinceDetection / 1000).toFixed(0)}s`,
+    );
 
     if (timeSinceDetection >= ONE_SIDED_TIMEOUT_MS) {
       console.log("❌ ONE-SIDED TIMEOUT → EMERGENCY EXIT");
       console.log("─".repeat(60));
 
-      const activeSide = hasDelta ? 'Delta' : 'CoinDCX';
-      const missingSide = hasDelta ? 'CoinDCX' : 'Delta';
+      const activeSide = hasDelta ? "Delta" : "CoinDCX";
+      const missingSide = hasDelta ? "CoinDCX" : "Delta";
 
       this.emergencyExit("emergencyExit", {
         reason: "ONE_SIDED_TIMEOUT",
@@ -973,205 +1082,228 @@ class TradeMonitor extends EventEmitter {
   }
 
   async verifyPositionsViaREST() {
-  const now = Date.now();
-  const MIN_INTERVAL = 10000; // 5 seconds
+    const now = Date.now();
+    const MIN_INTERVAL = 10000; // 5 seconds
 
-  if (now - this.lastRestVerificationTime < MIN_INTERVAL) {
-    return;
-  }
-
-  this.lastRestVerificationTime = now;
-
-  console.log('\n🔄 REST API VERIFICATION');
-  console.log('─'.repeat(50));
-
-  let restHasDelta = false;
-  let restHasCoindcx = false;
-  let activeDeltaREST = null;
-  let activeCoindcxREST = null;
-
-  // ═══════════════════════════════════════════════════════════════
-  // DELTA REST CHECK - WITH SIDE DETECTION
-  // ═══════════════════════════════════════════════════════════════
-  try {
-    const deltaPositions = await deltaAPI.getAllPositions();
-
-    console.log(`   Delta REST: Fetched ${Array.isArray(deltaPositions) ? deltaPositions.length : 0} position(s)`);
-
-    if (Array.isArray(deltaPositions) && deltaPositions.length > 0) {
-      // 🔴 ADD SIDE to each position
-      deltaPositions.forEach((p, i) => {
-        const size = parseFloat(p.size || 0);
-        
-        // Determine side from size sign
-        // Delta: positive size = LONG, negative size = SHORT
-        let side = 'UNKNOWN';
-        if (size > 0) {
-          side = 'LONG';
-        } else if (size < 0) {
-          side = 'SHORT';
-        }
-        
-        // Add side field to position object
-        p.side = side;
-        
-        console.log(`      [${i}] ${p.product_symbol}: size=${p.size}, side=${side}`);
-      });
-
-      // Find position with non-zero size
-      activeDeltaREST = deltaPositions.find(p => {
-        const size = Math.abs(parseFloat(p.size || 0));
-        return size > 0;
-      });
+    if (now - this.lastRestVerificationTime < MIN_INTERVAL) {
+      return;
     }
 
-    restHasDelta = !!activeDeltaREST;
+    this.lastRestVerificationTime = now;
 
-    if (activeDeltaREST) {
-      console.log(`   Delta REST: ✅ ACTIVE POSITION`);
-      console.log(`      Symbol: ${activeDeltaREST.product_symbol}`);
-      console.log(`      Size: ${activeDeltaREST.size}`);
-      console.log(`      Side: ${activeDeltaREST.side}`);
-    } else {
-      console.log(`   Delta REST: ❌ NO ACTIVE POSITION`);
+    console.log("\n🔄 REST API VERIFICATION");
+    console.log("─".repeat(50));
+
+    let restHasDelta = false;
+    let restHasCoindcx = false;
+    let activeDeltaREST = null;
+    let activeCoindcxREST = null;
+
+    // ═══════════════════════════════════════════════════════════════
+    // DELTA REST CHECK - WITH SIDE DETECTION
+    // ═══════════════════════════════════════════════════════════════
+    try {
+      const deltaPositions = await deltaAPI.getAllPositions();
+
+      console.log(
+        `   Delta REST: Fetched ${Array.isArray(deltaPositions) ? deltaPositions.length : 0} position(s)`,
+      );
+
+      if (Array.isArray(deltaPositions) && deltaPositions.length > 0) {
+        // 🔴 ADD SIDE to each position
+        deltaPositions.forEach((p, i) => {
+          const size = parseFloat(p.size || 0);
+
+          // Determine side from size sign
+          // Delta: positive size = LONG, negative size = SHORT
+          let side = "UNKNOWN";
+          if (size > 0) {
+            side = "LONG";
+          } else if (size < 0) {
+            side = "SHORT";
+          }
+
+          // Add side field to position object
+          p.side = side;
+
+          console.log(
+            `      [${i}] ${p.product_symbol}: size=${p.size}, side=${side}`,
+          );
+        });
+
+        // Find position with non-zero size
+        activeDeltaREST = deltaPositions.find((p) => {
+          const size = Math.abs(parseFloat(p.size || 0));
+          return size > 0;
+        });
+      }
+
+      restHasDelta = !!activeDeltaREST;
+
+      if (activeDeltaREST) {
+        console.log(`   Delta REST: ✅ ACTIVE POSITION`);
+        console.log(`      Symbol: ${activeDeltaREST.product_symbol}`);
+        console.log(`      Size: ${activeDeltaREST.size}`);
+        console.log(`      Side: ${activeDeltaREST.side}`);
+      } else {
+        console.log(`   Delta REST: ❌ NO ACTIVE POSITION`);
+      }
+    } catch (error) {
+      console.error(`   Delta REST: ❌ Error - ${error.message}`);
     }
-  } catch (error) {
-    console.error(`   Delta REST: ❌ Error - ${error.message}`);
-  }
 
-  // ═══════════════════════════════════════════════════════════════
-  // COINDCX REST CHECK - WITH SIDE DETECTION
-  // ═══════════════════════════════════════════════════════════════
-  try {
-    const coindcxPositions = await coindcxAPI.getPositions();
+    // ═══════════════════════════════════════════════════════════════
+    // COINDCX REST CHECK - WITH SIDE DETECTION
+    // ═══════════════════════════════════════════════════════════════
+    try {
+      const coindcxPositions = await coindcxAPI.getPositions();
 
-    console.log(`   CoinDCX REST: Fetched ${Array.isArray(coindcxPositions) ? coindcxPositions.length : 0} position(s)`);
+      console.log(
+        `   CoinDCX REST: Fetched ${Array.isArray(coindcxPositions) ? coindcxPositions.length : 0} position(s)`,
+      );
 
-    if (Array.isArray(coindcxPositions) && coindcxPositions.length > 0) {
-      // 🔴 ADD SIDE to each position
-      coindcxPositions.forEach((p, i) => {
-        const size = parseFloat(p.size || p.active_pos || p.positionAmount || 0);
-        
-        // Determine side from size sign
-        // CoinDCX: positive size = LONG, negative size = SHORT
-        let side = 'UNKNOWN';
-        if (size > 0) {
-          side = 'LONG';
-        } else if (size < 0) {
-          side = 'SHORT';
-        }
-        
-        // Add side field to position object
-        p.side = side;
-        
-        console.log(`      [${i}] ${p.symbol || p.pair}: size=${size}, side=${side}`);
-      });
+      if (Array.isArray(coindcxPositions) && coindcxPositions.length > 0) {
+        // 🔴 ADD SIDE to each position
+        coindcxPositions.forEach((p, i) => {
+          const size = parseFloat(
+            p.size || p.active_pos || p.positionAmount || 0,
+          );
 
-      activeCoindcxREST = coindcxPositions.find(p => {
-        const size = Math.abs(parseFloat(
-          p.size || p.active_pos || p.positionAmount || 0
-        ));
-        return size > 0;
-      });
+          // Determine side from size sign
+          // CoinDCX: positive size = LONG, negative size = SHORT
+          let side = "UNKNOWN";
+          if (size > 0) {
+            side = "LONG";
+          } else if (size < 0) {
+            side = "SHORT";
+          }
+
+          // Add side field to position object
+          p.side = side;
+
+          console.log(
+            `      [${i}] ${p.symbol || p.pair}: size=${size}, side=${side}`,
+          );
+        });
+
+        activeCoindcxREST = coindcxPositions.find((p) => {
+          const size = Math.abs(
+            parseFloat(p.size || p.active_pos || p.positionAmount || 0),
+          );
+          return size > 0;
+        });
+      }
+
+      restHasCoindcx = !!activeCoindcxREST;
+
+      if (activeCoindcxREST) {
+        console.log(`   CoinDCX REST: ✅ ACTIVE POSITION`);
+        console.log(
+          `      Symbol: ${activeCoindcxREST.symbol || activeCoindcxREST.pair}`,
+        );
+        console.log(
+          `      Size: ${this.getCoindcxPositionSize(activeCoindcxREST)}`,
+        );
+        console.log(`      Side: ${activeCoindcxREST.side}`);
+      } else {
+        console.log(`   CoinDCX REST: ❌ NO ACTIVE POSITION`);
+      }
+    } catch (error) {
+      console.error(`   CoinDCX REST: ❌ Error - ${error.message}`);
     }
 
-    restHasCoindcx = !!activeCoindcxREST;
+    // ═══════════════════════════════════════════════════════════════
+    // COMPARE WEBSOCKET VS REST
+    // ═══════════════════════════════════════════════════════════════
+    const wsHasDelta = this.hasDeltaPosition();
+    const wsHasCoindcx = this.hasCoindcxPosition();
 
-    if (activeCoindcxREST) {
-      console.log(`   CoinDCX REST: ✅ ACTIVE POSITION`);
-      console.log(`      Symbol: ${activeCoindcxREST.symbol || activeCoindcxREST.pair}`);
-      console.log(`      Size: ${this.getCoindcxPositionSize(activeCoindcxREST)}`);
-      console.log(`      Side: ${activeCoindcxREST.side}`);
-    } else {
-      console.log(`   CoinDCX REST: ❌ NO ACTIVE POSITION`);
+    console.log(`\n   📊 COMPARISON:`);
+    console.log(`   ┌─────────────┬──────────┬──────────┐`);
+    console.log(`   │ Exchange    │ WebSocket│ REST API │`);
+    console.log(`   ├─────────────┼──────────┼──────────┤`);
+    console.log(
+      `   │ Delta       │ ${wsHasDelta ? "✅ YES   " : "❌ NO    "} │ ${restHasDelta ? "✅ YES   " : "❌ NO    "} │`,
+    );
+    console.log(
+      `   │ CoinDCX     │ ${wsHasCoindcx ? "✅ YES   " : "❌ NO    "} │ ${restHasCoindcx ? "✅ YES   " : "❌ NO    "} │`,
+    );
+    console.log(`   └─────────────┴──────────┴──────────┘`);
+
+    // MISMATCH DETECTION & FIX
+    if (wsHasDelta && !restHasDelta) {
+      console.log("\n🔴 MISMATCH: WebSocket shows Delta, REST shows NONE");
+      console.log("   → Clearing stale WebSocket data");
+      this.clearDeltaPosition("rest_mismatch");
     }
-  } catch (error) {
-    console.error(`   CoinDCX REST: ❌ Error - ${error.message}`);
+
+    if (wsHasCoindcx && !restHasCoindcx) {
+      console.log("\n🔴 MISMATCH: WebSocket shows CoinDCX, REST shows NONE");
+      console.log("   → Clearing stale WebSocket data");
+      this.clearCoindcxPosition("rest_mismatch");
+    }
+
+    // Update from REST if WebSocket is stale
+    if (!wsHasDelta && restHasDelta && activeDeltaREST) {
+      console.log("\n🔄 Updating Delta from REST (with side field)");
+      this.latestDeltaPosition = activeDeltaREST;
+    }
+
+    if (!wsHasCoindcx && restHasCoindcx && activeCoindcxREST) {
+      console.log("\n🔄 Updating CoinDCX from REST (with side field)");
+      this.latestCoindcxPosition = activeCoindcxREST;
+    }
+
+    console.log("─".repeat(50));
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // COMPARE WEBSOCKET VS REST
-  // ═══════════════════════════════════════════════════════════════
-  const wsHasDelta = this.hasDeltaPosition();
-  const wsHasCoindcx = this.hasCoindcxPosition();
-
-  console.log(`\n   📊 COMPARISON:`);
-  console.log(`   ┌─────────────┬──────────┬──────────┐`);
-  console.log(`   │ Exchange    │ WebSocket│ REST API │`);
-  console.log(`   ├─────────────┼──────────┼──────────┤`);
-  console.log(`   │ Delta       │ ${wsHasDelta ? '✅ YES   ' : '❌ NO    '} │ ${restHasDelta ? '✅ YES   ' : '❌ NO    '} │`);
-  console.log(`   │ CoinDCX     │ ${wsHasCoindcx ? '✅ YES   ' : '❌ NO    '} │ ${restHasCoindcx ? '✅ YES   ' : '❌ NO    '} │`);
-  console.log(`   └─────────────┴──────────┴──────────┘`);
-
-  // MISMATCH DETECTION & FIX
-  if (wsHasDelta && !restHasDelta) {
-    console.log('\n🔴 MISMATCH: WebSocket shows Delta, REST shows NONE');
-    console.log('   → Clearing stale WebSocket data');
-    this.clearDeltaPosition('rest_mismatch');
+  // 🔴 HELPER METHODS to clear positions
+  clearDeltaPosition(reason) {
+    console.log(`🧹 Clearing Delta position (reason: ${reason})`);
+    this.latestDeltaPosition = null;
   }
 
-  if (wsHasCoindcx && !restHasCoindcx) {
-    console.log('\n🔴 MISMATCH: WebSocket shows CoinDCX, REST shows NONE');
-    console.log('   → Clearing stale WebSocket data');
-    this.clearCoindcxPosition('rest_mismatch');
+  clearCoindcxPosition(reason) {
+    console.log(`🧹 Clearing CoinDCX position (reason: ${reason})`);
+    this.latestCoindcxPosition = null;
   }
-
-  // Update from REST if WebSocket is stale
-  if (!wsHasDelta && restHasDelta && activeDeltaREST) {
-    console.log('\n🔄 Updating Delta from REST (with side field)');
-    this.latestDeltaPosition = activeDeltaREST;
-  }
-
-  if (!wsHasCoindcx && restHasCoindcx && activeCoindcxREST) {
-    console.log('\n🔄 Updating CoinDCX from REST (with side field)');
-    this.latestCoindcxPosition = activeCoindcxREST;
-  }
-
-  console.log('─'.repeat(50));
-}
-
-// 🔴 HELPER METHODS to clear positions
-clearDeltaPosition(reason) {
-  console.log(`🧹 Clearing Delta position (reason: ${reason})`);
-  this.latestDeltaPosition = null;
-}
-
-clearCoindcxPosition(reason) {
-  console.log(`🧹 Clearing CoinDCX position (reason: ${reason})`);
-  this.latestCoindcxPosition = null;
-}
 
   /**
- * COMPLETE EXIT LOGIC - Updated checkForNormalExit()
- * 
- * Priority Order (CRITICAL - runs in this sequence):
- * 1. Stop Loss (0.30% adverse) - ALWAYS ACTIVE
- * 2. Max Hold Time (4 hours) - ALWAYS ACTIVE
- * 3. Wait for Funding Time
- * 4. Post-Funding Wait (15 min)
- * 5. Spread-Based Exit (0.05%)
- * 6. 50% Profit Capture
- * 7. P&L Based Exits
- * 8. Timeout Exit (60 min post-funding)
- */
+   * COMPLETE EXIT LOGIC - Updated checkForNormalExit()
+   *
+   * Priority Order (CRITICAL - runs in this sequence):
+   * 1. Stop Loss (0.30% adverse) - ALWAYS ACTIVE
+   * 2. Max Hold Time (4 hours) - ALWAYS ACTIVE
+   * 3. Wait for Funding Time
+   * 4. Post-Funding Wait (15 min)
+   * 5. Spread-Based Exit (0.05%)
+   * 6. 50% Profit Capture
+   * 7. P&L Based Exits
+   * 8. Timeout Exit (60 min post-funding)
+   */
 
   checkForNormalExit() {
     if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return;
 
-    console.log('\n🔍 NORMAL EXIT CHECK');
+    console.log("\n🔍 NORMAL EXIT CHECK");
     // console.log("delta", this.latestDeltaPosition);
     // console.log("coindcx", this.latestCoindcxPosition);
 
-
-
     const now = Date.now();
-   const deltaMarkPrice = parseFloat(this.latestDeltaPosition.mark_price || 0);
-  const coindcxMarkPrice = parseFloat(this.latestCoindcxPosition.mark_price || 0);
+    const deltaMarkPrice = parseFloat(this.latestDeltaPosition.mark_price || 0);
+    const coindcxMarkPrice = parseFloat(
+      this.latestCoindcxPosition.mark_price || 0,
+    );
 
     // ═══════════════════════════════════════════════════════════════════
     // 🔧 STEP 0: CALCULATE & STORE ENTRY SPREAD (First time only)
     // ═══════════════════════════════════════════════════════════════════
-    if (deltaMarkPrice && coindcxMarkPrice && this.activeTrade && !this.activeTrade.entrySpread) {
+    if (
+      deltaMarkPrice &&
+      coindcxMarkPrice &&
+      this.activeTrade &&
+      !this.activeTrade.entrySpread
+    ) {
       const priceDifference = coindcxMarkPrice - deltaMarkPrice;
       const entrySpread = Math.abs(priceDifference / deltaMarkPrice) * 100;
 
@@ -1181,20 +1313,17 @@ clearCoindcxPosition(reason) {
       console.log(`   CoinDCX Entry Price: $${coindcxMarkPrice.toFixed(8)}\n`);
     }
 
-
-
     if (deltaMarkPrice && coindcxMarkPrice) {
-
-
-
       const priceDifference = coindcxMarkPrice - deltaMarkPrice;
       const currentSpread = Math.abs(priceDifference / deltaMarkPrice) * 100;
 
-      console.log('\n📊 SPREAD MONITORING (Post-Funding)');
-      console.log('━'.repeat(60));
+      console.log("\n📊 SPREAD MONITORING (Post-Funding)");
+      console.log("━".repeat(60));
       console.log(`   Delta Mark Price:   $${deltaMarkPrice.toFixed(8)}`);
       console.log(`   CoinDCX Mark Price: $${coindcxMarkPrice.toFixed(8)}`);
-      console.log(`   Price Difference:   $${priceDifference.toFixed(8)} (${priceDifference >= 0 ? '+' : ''}${((priceDifference / deltaMarkPrice) * 100).toFixed(4)}%)`);
+      console.log(
+        `   Price Difference:   $${priceDifference.toFixed(8)} (${priceDifference >= 0 ? "+" : ""}${((priceDifference / deltaMarkPrice) * 100).toFixed(4)}%)`,
+      );
       console.log(`   Current Spread:     ${currentSpread.toFixed(4)}%`);
 
       const EXIT_SPREAD_TARGET = 0.03; // 0.02%
@@ -1205,9 +1334,11 @@ clearCoindcxPosition(reason) {
         console.log(`   Actual: ${currentSpread.toFixed(4)}%`);
         // console.log(`   Time since funding: ${(timeSinceLockedFunding / 1000).toFixed(0)}s`);
         console.log(`   → Triggering EXIT`);
-        console.log('━'.repeat(60));
+        console.log("━".repeat(60));
 
-        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+        const coindcxSymbol =
+          this.latestCoindcxPosition.symbol ||
+          this.latestCoindcxPosition.contractPair;
         const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
         const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
@@ -1229,8 +1360,10 @@ clearCoindcxPosition(reason) {
         return;
       }
 
-      console.log(`   Status: Spread ${currentSpread.toFixed(4)}% > ${EXIT_SPREAD_TARGET}% → Continue monitoring`);
-      console.log('━'.repeat(60));
+      console.log(
+        `   Status: Spread ${currentSpread.toFixed(4)}% > ${EXIT_SPREAD_TARGET}% → Continue monitoring`,
+      );
+      console.log("━".repeat(60));
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1238,24 +1371,36 @@ clearCoindcxPosition(reason) {
     // Exit if spread moved adverse by 0.30% from entry
     // NOTE: This runs BEFORE and AFTER funding time - it's a safety net
     // ═══════════════════════════════════════════════════════════════════
-    if (deltaMarkPrice && coindcxMarkPrice && this.activeTrade && this.activeTrade.entrySpread) {
-      const currentSpread = Math.abs((coindcxMarkPrice - deltaMarkPrice) / deltaMarkPrice) * 100;
+    if (
+      deltaMarkPrice &&
+      coindcxMarkPrice &&
+      this.activeTrade &&
+      this.activeTrade.entrySpread
+    ) {
+      const currentSpread =
+        Math.abs((coindcxMarkPrice - deltaMarkPrice) / deltaMarkPrice) * 100;
       const spreadChange = currentSpread - this.activeTrade.entrySpread;
 
-      const STOP_LOSS_THRESHOLD = 0.30; // 0.30% adverse movement
+      const STOP_LOSS_THRESHOLD = 5.0; // 0.30% adverse movement
 
       if (spreadChange > STOP_LOSS_THRESHOLD) {
-        console.log('\n🛑🛑🛑 STOP LOSS TRIGGERED 🛑🛑🛑');
-        console.log('='.repeat(60));
+        console.log("\n🛑🛑🛑 STOP LOSS TRIGGERED 🛑🛑🛑");
+        console.log("=".repeat(60));
         console.log(`   ⚠️  SAFETY EXIT - Active at ALL times`);
-        console.log(`   Entry Spread: ${this.activeTrade.entrySpread.toFixed(4)}%`);
+        console.log(
+          `   Entry Spread: ${this.activeTrade.entrySpread.toFixed(4)}%`,
+        );
         console.log(`   Current Spread: ${currentSpread.toFixed(4)}%`);
-        console.log(`   Adverse Movement: ${spreadChange.toFixed(4)}% (> ${STOP_LOSS_THRESHOLD}% threshold)`);
+        console.log(
+          `   Adverse Movement: ${spreadChange.toFixed(4)}% (> ${STOP_LOSS_THRESHOLD}% threshold)`,
+        );
         console.log(`   → IMMEDIATE EXIT TO PREVENT FURTHER LOSS`);
-        console.log('='.repeat(60));
+        console.log("=".repeat(60));
 
         const deltaSymbol = this.latestDeltaPosition.product_symbol;
-        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+        const coindcxSymbol =
+          this.latestCoindcxPosition.symbol ||
+          this.latestCoindcxPosition.contractPair;
         const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
         const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
@@ -1327,9 +1472,10 @@ clearCoindcxPosition(reason) {
       return;
     }
 
-    const fundingTimeMs = frData.nextFundingTime instanceof Date
-      ? frData.nextFundingTime.getTime()
-      : new Date(frData.nextFundingTime).getTime();
+    const fundingTimeMs =
+      frData.nextFundingTime instanceof Date
+        ? frData.nextFundingTime.getTime()
+        : new Date(frData.nextFundingTime).getTime();
 
     if (Number.isNaN(fundingTimeMs)) {
       console.error("❌ Invalid funding time format:", frData.nextFundingTime);
@@ -1340,16 +1486,24 @@ clearCoindcxPosition(reason) {
 
     console.log(`\n📅 Funding Schedule:`);
     console.log(`   Current Time: ${new Date(now).toLocaleString("en-IN")}`);
-    console.log(`   Next Funding: ${new Date(fundingTimeMs).toLocaleString("en-IN")}`);
-    console.log(`   Time Until Funding: ${(timeUntilFunding / 1000).toFixed(0)}s (${(timeUntilFunding / 60000).toFixed(1)} minutes)`);
+    console.log(
+      `   Next Funding: ${new Date(fundingTimeMs).toLocaleString("en-IN")}`,
+    );
+    console.log(
+      `   Time Until Funding: ${(timeUntilFunding / 1000).toFixed(0)}s (${(timeUntilFunding / 60000).toFixed(1)} minutes)`,
+    );
 
     // Wait until funding time passes
     if (timeUntilFunding > 0) {
       const minutes = Math.floor(timeUntilFunding / 60000);
       const seconds = Math.floor((timeUntilFunding % 60000) / 1000);
-      console.log(`⏳ Waiting for funding... ${minutes}m ${seconds}s remaining`);
+      console.log(
+        `⏳ Waiting for funding... ${minutes}m ${seconds}s remaining`,
+      );
       console.log(`   → Spread exit is DISABLED until funding completes`);
-      console.log(`   → Only Stop Loss (${0.30}%) and Max Hold Time (4h) are active\n`);
+      console.log(
+        `   → Only Stop Loss (${0.3}%) and Max Hold Time (4h) are active\n`,
+      );
 
       this.lockedFundingTime = null;
       this.fundingConfirmedAt = null;
@@ -1362,17 +1516,23 @@ clearCoindcxPosition(reason) {
     if (!this.lockedFundingTime) {
       this.lockedFundingTime = fundingTimeMs;
       this.lastRealizedFunding = Number(
-        this.latestDeltaPosition.realized_funding || 0
+        this.latestDeltaPosition.realized_funding || 0,
       );
 
       console.log("\n🕒 FUNDING TIME REACHED!");
-      console.log(`   Locked At: ${new Date(this.lockedFundingTime).toLocaleString("en-IN")}`);
-      console.log(`   Initial Realized Funding: $${this.lastRealizedFunding.toFixed(4)}`);
+      console.log(
+        `   Locked At: ${new Date(this.lockedFundingTime).toLocaleString("en-IN")}`,
+      );
+      console.log(
+        `   Initial Realized Funding: $${this.lastRealizedFunding.toFixed(4)}`,
+      );
       console.log(`   → Starting exit window monitoring\n`);
     }
 
     const timeSinceLockedFunding = now - this.lockedFundingTime;
-    console.log(`\n⏱️  Time since funding: ${(timeSinceLockedFunding / 1000).toFixed(0)}s (${(timeSinceLockedFunding / 60000).toFixed(1)} minutes)`);
+    console.log(
+      `\n⏱️  Time since funding: ${(timeSinceLockedFunding / 1000).toFixed(0)}s (${(timeSinceLockedFunding / 60000).toFixed(1)} minutes)`,
+    );
 
     // ═══════════════════════════════════════════════════════════════════
     // ⏳ STEP 5: FUNDING SETTLEMENT + POST-FUNDING WAIT (15-30 min)
@@ -1382,13 +1542,20 @@ clearCoindcxPosition(reason) {
     const TOTAL_WAIT_TIME = FUNDING_SETTLEMENT_BUFFER + POST_FUNDING_WAIT;
 
     // Detect funding settlement
-    const currentRealizedFunding = Number(this.latestDeltaPosition.realized_funding || 0);
-    if (currentRealizedFunding !== this.lastRealizedFunding && !this.fundingConfirmedAt) {
+    const currentRealizedFunding = Number(
+      this.latestDeltaPosition.realized_funding || 0,
+    );
+    if (
+      currentRealizedFunding !== this.lastRealizedFunding &&
+      !this.fundingConfirmedAt
+    ) {
       this.fundingConfirmedAt = now;
       const fundingReceived = currentRealizedFunding - this.lastRealizedFunding;
       console.log(`\n💰 FUNDING SETTLEMENT DETECTED!`);
       console.log(`   Amount Received: $${fundingReceived.toFixed(4)}`);
-      console.log(`   Confirmed At: ${new Date(this.fundingConfirmedAt).toLocaleString("en-IN")}`);
+      console.log(
+        `   Confirmed At: ${new Date(this.fundingConfirmedAt).toLocaleString("en-IN")}`,
+      );
 
       if (this.activeTrade) {
         this.activeTrade.fundingReceived = true;
@@ -1400,16 +1567,30 @@ clearCoindcxPosition(reason) {
       const waitRemaining = TOTAL_WAIT_TIME - timeSinceLockedFunding;
 
       if (timeSinceLockedFunding < FUNDING_SETTLEMENT_BUFFER) {
-        console.log(`\n⏳ Waiting for funding settlement (${FUNDING_SETTLEMENT_BUFFER / 1000}s)...`);
-        console.log(`   Last Realized Funding: $${this.lastRealizedFunding.toFixed(4)}`);
-        console.log(`   Current Realized Funding: $${currentRealizedFunding.toFixed(4)}`);
-        console.log(`   Buffer remaining: ${(waitRemaining / 1000).toFixed(0)}s\n`);
+        console.log(
+          `\n⏳ Waiting for funding settlement (${FUNDING_SETTLEMENT_BUFFER / 1000}s)...`,
+        );
+        console.log(
+          `   Last Realized Funding: $${this.lastRealizedFunding.toFixed(4)}`,
+        );
+        console.log(
+          `   Current Realized Funding: $${currentRealizedFunding.toFixed(4)}`,
+        );
+        console.log(
+          `   Buffer remaining: ${(waitRemaining / 1000).toFixed(0)}s\n`,
+        );
       } else {
-        console.log(`\n⏳ POST-FUNDING WAIT PERIOD (${POST_FUNDING_WAIT / 60000} minutes)`);
+        console.log(
+          `\n⏳ POST-FUNDING WAIT PERIOD (${POST_FUNDING_WAIT / 60000} minutes)`,
+        );
         console.log(`   Purpose: Allow spread to stabilize after funding`);
-        console.log(`   Time since funding: ${(timeSinceLockedFunding / 60000).toFixed(1)} minutes`);
-        console.log(`   Wait remaining: ${(waitRemaining / 60000).toFixed(1)} minutes`);
-        console.log(`   → Stop Loss (${0.30}%) and Max Hold Time still active`);
+        console.log(
+          `   Time since funding: ${(timeSinceLockedFunding / 60000).toFixed(1)} minutes`,
+        );
+        console.log(
+          `   Wait remaining: ${(waitRemaining / 60000).toFixed(1)} minutes`,
+        );
+        console.log(`   → Stop Loss (${0.3}%) and Max Hold Time still active`);
         console.log(`   → Exit checks will activate after wait period\n`);
       }
 
@@ -1417,7 +1598,9 @@ clearCoindcxPosition(reason) {
     }
 
     console.log(`\n✅ POST-FUNDING WAIT COMPLETE`);
-    console.log(`   Total time since funding: ${(timeSinceLockedFunding / 60000).toFixed(1)} minutes`);
+    console.log(
+      `   Total time since funding: ${(timeSinceLockedFunding / 60000).toFixed(1)} minutes`,
+    );
     console.log(`   → Now checking exit conditions...\n`);
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1428,11 +1611,13 @@ clearCoindcxPosition(reason) {
       const priceDifference = coindcxMarkPrice - deltaMarkPrice;
       const currentSpread = Math.abs(priceDifference / deltaMarkPrice) * 100;
 
-      console.log('\n📊 SPREAD MONITORING (Post-Funding)');
-      console.log('━'.repeat(60));
+      console.log("\n📊 SPREAD MONITORING (Post-Funding)");
+      console.log("━".repeat(60));
       console.log(`   Delta Mark Price:   $${deltaMarkPrice.toFixed(8)}`);
       console.log(`   CoinDCX Mark Price: $${coindcxMarkPrice.toFixed(8)}`);
-      console.log(`   Price Difference:   $${priceDifference.toFixed(8)} (${priceDifference >= 0 ? '+' : ''}${((priceDifference / deltaMarkPrice) * 100).toFixed(4)}%)`);
+      console.log(
+        `   Price Difference:   $${priceDifference.toFixed(8)} (${priceDifference >= 0 ? "+" : ""}${((priceDifference / deltaMarkPrice) * 100).toFixed(4)}%)`,
+      );
       console.log(`   Current Spread:     ${currentSpread.toFixed(4)}%`);
 
       const EXIT_SPREAD_TARGET = 0.03; // 0.05%
@@ -1441,11 +1626,15 @@ clearCoindcxPosition(reason) {
         console.log(`\n✅ SPREAD CONVERGENCE DETECTED (After Funding)!`);
         console.log(`   Target: ≤ ${EXIT_SPREAD_TARGET}%`);
         console.log(`   Actual: ${currentSpread.toFixed(4)}%`);
-        console.log(`   Time since funding: ${(timeSinceLockedFunding / 1000).toFixed(0)}s`);
+        console.log(
+          `   Time since funding: ${(timeSinceLockedFunding / 1000).toFixed(0)}s`,
+        );
         console.log(`   → Triggering EXIT`);
-        console.log('━'.repeat(60));
+        console.log("━".repeat(60));
 
-        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+        const coindcxSymbol =
+          this.latestCoindcxPosition.symbol ||
+          this.latestCoindcxPosition.contractPair;
         const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
         const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
@@ -1467,33 +1656,47 @@ clearCoindcxPosition(reason) {
         return;
       }
 
-      console.log(`   Status: Spread ${currentSpread.toFixed(4)}% > ${EXIT_SPREAD_TARGET}% → Continue monitoring`);
-      console.log('━'.repeat(60));
+      console.log(
+        `   Status: Spread ${currentSpread.toFixed(4)}% > ${EXIT_SPREAD_TARGET}% → Continue monitoring`,
+      );
+      console.log("━".repeat(60));
     }
 
     // ═══════════════════════════════════════════════════════════════════
     // ✅ PRIORITY 4: 50% PROFIT CAPTURE (Post-Funding)
     // Exit if spread has captured 50% of entry spread
     // ═══════════════════════════════════════════════════════════════════
-    if (deltaMarkPrice && coindcxMarkPrice && this.activeTrade && this.activeTrade.entrySpread) {
+    if (
+      deltaMarkPrice &&
+      coindcxMarkPrice &&
+      this.activeTrade &&
+      this.activeTrade.entrySpread
+    ) {
       const priceDifference = coindcxMarkPrice - deltaMarkPrice;
       const currentSpread = Math.abs(priceDifference / deltaMarkPrice) * 100;
       const spreadCaptured = this.activeTrade.entrySpread - currentSpread;
-      const percentCaptured = (spreadCaptured / this.activeTrade.entrySpread) * 100;
+      const percentCaptured =
+        (spreadCaptured / this.activeTrade.entrySpread) * 100;
 
       const PROFIT_50_THRESHOLD = 50; // 50% captured
 
       if (percentCaptured >= PROFIT_50_THRESHOLD) {
-        console.log('\n✅✅✅ 50% PROFIT CAPTURED ✅✅✅');
-        console.log('='.repeat(60));
-        console.log(`   Entry Spread: ${this.activeTrade.entrySpread.toFixed(4)}%`);
+        console.log("\n✅✅✅ 50% PROFIT CAPTURED ✅✅✅");
+        console.log("=".repeat(60));
+        console.log(
+          `   Entry Spread: ${this.activeTrade.entrySpread.toFixed(4)}%`,
+        );
         console.log(`   Current Spread: ${currentSpread.toFixed(4)}%`);
         console.log(`   Spread Captured: ${spreadCaptured.toFixed(4)}%`);
-        console.log(`   Percent Captured: ${percentCaptured.toFixed(2)}% (target: ${PROFIT_50_THRESHOLD}%)`);
+        console.log(
+          `   Percent Captured: ${percentCaptured.toFixed(2)}% (target: ${PROFIT_50_THRESHOLD}%)`,
+        );
         console.log(`   → EXECUTING PROFIT-TAKING EXIT`);
-        console.log('='.repeat(60));
+        console.log("=".repeat(60));
 
-        const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+        const coindcxSymbol =
+          this.latestCoindcxPosition.symbol ||
+          this.latestCoindcxPosition.contractPair;
         const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
         const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
@@ -1517,9 +1720,13 @@ clearCoindcxPosition(reason) {
       }
 
       console.log(`\n📊 Profit Capture Progress:`);
-      console.log(`   Entry Spread: ${this.activeTrade.entrySpread.toFixed(4)}%`);
+      console.log(
+        `   Entry Spread: ${this.activeTrade.entrySpread.toFixed(4)}%`,
+      );
       console.log(`   Current Spread: ${currentSpread.toFixed(4)}%`);
-      console.log(`   Captured: ${spreadCaptured.toFixed(4)}% (${percentCaptured.toFixed(2)}%)`);
+      console.log(
+        `   Captured: ${spreadCaptured.toFixed(4)}% (${percentCaptured.toFixed(2)}%)`,
+      );
       console.log(`   Target: ${PROFIT_50_THRESHOLD}% of entry spread\n`);
     }
 
@@ -1530,7 +1737,7 @@ clearCoindcxPosition(reason) {
 
     const deltaPnL = this.latestDeltaPosition.unrealized_pnl || 0;
     const coindcxPnL = this.calculateCoindcxUnrealizedPnL(
-      this.latestCoindcxPosition
+      this.latestCoindcxPosition,
     );
     const totalPnL = deltaPnL + coindcxPnL;
 
@@ -1545,7 +1752,9 @@ clearCoindcxPosition(reason) {
       console.log(`   Combined P&L: $${totalPnL.toFixed(4)} >= $0`);
       console.log(`   → Exiting after funding completion`);
 
-      const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+      const coindcxSymbol =
+        this.latestCoindcxPosition.symbol ||
+        this.latestCoindcxPosition.contractPair;
       const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
       const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
@@ -1574,7 +1783,9 @@ clearCoindcxPosition(reason) {
       console.log(`   CoinDCX P&L: $${coindcxPnL.toFixed(4)} >= $0`);
       console.log(`   Combined P&L: $${totalPnL.toFixed(4)}`);
 
-      const coindcxSymbol = this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.contractPair;
+      const coindcxSymbol =
+        this.latestCoindcxPosition.symbol ||
+        this.latestCoindcxPosition.contractPair;
       const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
       const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
@@ -1632,13 +1843,20 @@ clearCoindcxPosition(reason) {
     // ⏳ STILL MONITORING
     // ═══════════════════════════════════════════════════════════════════
     const elapsedMinutes = (timeSinceLockedFunding / 60000).toFixed(1);
-    const remainingMinutes = ((MAX_WAIT_AFTER_FUNDING_MS - timeSinceLockedFunding) / 60000).toFixed(1);
+    const remainingMinutes = (
+      (MAX_WAIT_AFTER_FUNDING_MS - timeSinceLockedFunding) /
+      60000
+    ).toFixed(1);
 
     console.log(`\n⏳ Monitoring for profit target...`);
-    console.log(`   Elapsed: ${elapsedMinutes} minutes | Remaining: ${remainingMinutes} minutes`);
+    console.log(
+      `   Elapsed: ${elapsedMinutes} minutes | Remaining: ${remainingMinutes} minutes`,
+    );
     console.log(`   Current P&L: $${totalPnL.toFixed(4)}`);
     console.log(`   Target: Total PnL >= $0 OR Both positions >= $0`);
-    console.log(`   → Will continue monitoring until profit target or timeout\n`);
+    console.log(
+      `   → Will continue monitoring until profit target or timeout\n`,
+    );
   }
 
   // Helper method to reset funding state
@@ -1652,9 +1870,13 @@ clearCoindcxPosition(reason) {
   calculateCoindcxUnrealizedPnL(position) {
     // CoinDCX provides unrealized PnL directly in their position data
     // Use their calculation instead of manual calculation (which requires mark_price that WebSocket doesn't provide)
-    const unrealizedPnl = parseFloat(position.unrealised_pnl || position.unrealisedPnl || position.pnl || 0);
+    const unrealizedPnl = parseFloat(
+      position.unrealised_pnl || position.unrealisedPnl || position.pnl || 0,
+    );
 
-    console.log(`📊 CoinDCX PnL: $${unrealizedPnl.toFixed(4)} (from ${position.symbol || position.pair})`);
+    console.log(
+      `📊 CoinDCX PnL: $${unrealizedPnl.toFixed(4)} (from ${position.symbol || position.pair})`,
+    );
 
     return unrealizedPnl;
   }
@@ -1703,7 +1925,7 @@ clearCoindcxPosition(reason) {
     console.log("\n📝 TRADE REGISTERED FOR MONITORING");
     console.log("=".repeat(60));
     console.log(
-      `Delta: ${trade.deltaSymbol} | Coindcx: ${trade.coindcxSymbol}`
+      `Delta: ${trade.deltaSymbol} | Coindcx: ${trade.coindcxSymbol}`,
     );
     console.log("=".repeat(60));
 
@@ -1711,15 +1933,19 @@ clearCoindcxPosition(reason) {
     this.activeTrade = {
       ...trade,
       entryTime: trade.entryTime || Date.now(),
-      entrySpread: trade.entrySpread || null,  // Will be set from position data
+      entrySpread: trade.entrySpread || null, // Will be set from position data
       fundingReceived: false,
       fundingTime: null,
       registeredAt: Date.now(),
     };
 
-    console.log(`   Entry Time: ${new Date(this.activeTrade.entryTime).toLocaleString('en-IN')}`);
+    console.log(
+      `   Entry Time: ${new Date(this.activeTrade.entryTime).toLocaleString("en-IN")}`,
+    );
     if (this.activeTrade.entrySpread) {
-      console.log(`   Entry Spread: ${this.activeTrade.entrySpread.toFixed(4)}%`);
+      console.log(
+        `   Entry Spread: ${this.activeTrade.entrySpread.toFixed(4)}%`,
+      );
     }
     console.log("=".repeat(60));
 
@@ -1747,7 +1973,7 @@ clearCoindcxPosition(reason) {
     }, 5000); // Check every 5 seconds
 
     console.log(
-      "✅ Monitor active: Quantity + Flip + Normal Exit + One-Sided protection enabled"
+      "✅ Monitor active: Quantity + Flip + Normal Exit + One-Sided protection enabled",
     );
     console.log("=".repeat(60));
   }
