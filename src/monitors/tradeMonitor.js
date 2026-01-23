@@ -74,6 +74,7 @@ class TradeMonitor extends EventEmitter {
     // Listen to funding rate updates for real-time flip detection
     this.deltaMonitor.on("funding_rate", () => {
       if (this.latestDeltaPosition && this.latestCoindcxPosition) {
+        this.performQuantityCheck();
         this.checkForNormalExit();
         this.performFlipCheck();
         this.checkPreLiquidation();
@@ -83,6 +84,7 @@ class TradeMonitor extends EventEmitter {
 
     this.coindcxMonitor.on("funding_rate", () => {
       if (this.latestDeltaPosition && this.latestCoindcxPosition) {
+        this.performQuantityCheck();
         this.checkForNormalExit();
         this.performFlipCheck();
         this.checkPreLiquidation();
@@ -849,7 +851,10 @@ class TradeMonitor extends EventEmitter {
     };
   }
 
-  async performQuantityCheck(deltaPosition, coindcxPosition) {
+  async performQuantityCheck() {
+    const deltaPosition = this.latestDeltaPosition;
+    const coindcxPosition = this.latestCoindcxPosition;
+
     if (!deltaPosition || !coindcxPosition) return;
 
     const deltaSize = Math.abs(deltaPosition.size || 0);

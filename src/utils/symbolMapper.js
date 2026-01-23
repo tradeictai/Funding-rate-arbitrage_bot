@@ -1,3 +1,4 @@
+
 /**
  * Symbol Mapper - Handles conversion between Delta and Pi42 symbol formats
  * Delta format: BTCUSD, ETHUSD, SOLUSD
@@ -7,232 +8,231 @@
 class SymbolMapper {
   constructor() {
     // Manual mapping for common tokens
-    //     this.deltaToPi42Map = new Map([
-    //   ['ETHUSD', 'ETHUSDT'],
-    //   ['AAVEUSD', 'AAVEUSDT'],  // Note: AAVEUSDT may not exist; verify if needed
-    //   ['AAVEUSD', 'AAVEUSDT'],
-    //   ['ADAUSD', 'ADAUSDT'],    // Note: ADAUSDT may not exist; verify if needed
-    //   ['ADAUSD', 'ADAUSDT'],
-    //   ['ALGOUSD', 'ALGOUSDT'],  // Note: ALGOUSDT may not exist; verify if needed
-    //   ['ALGOUSD', 'ALGOUSDT'],
-    //   ['ALTUSD', 'ALTUSDT'],
-    //   ['APTUSD', 'APTUSDT'],
-    //   ['ARBUSD', 'ARBUSDT'],
-    //   ['ARUSD', 'ARUSDT'],
-    //   ['ATOMUSD', 'ATOMUSDT'],
-    //   ['ATOMUSD', 'ATOMUSDT'],
-    //   ['AVAXUSD', 'AVAXUSDT'],  // Note: AVAXUSDT may not exist; verify if needed
-    //   ['AVAXUSD', 'AVAXUSDT'],
-    //   ['AXSUSD', 'AXSUSDT'],
-    //   ['BBUSD', 'BBUSDT'],
-    //   ['BCHUSD', 'BCHUSDT'],    // Note: BCHUSDT may not exist; verify if needed
-    //   ['BCHUSD', 'BCHUSDT'],
-    //   ['BNBUSD', 'BNBUSDT'],     // Note: BNBUSDT may not exist; verify if needed
-    //   ['BNBUSD', 'BNBUSDT'],
-    //   ['BONKUSD', 'BONKUSDT'],
-    //   ['BTCUSD', 'BTCUSDT'],
-    //   ['CHZUSD', 'CHZUSDT'],
-    //   ['CRVUSD', 'CRVUSDT'],
-    //   ['DOGEUSD', 'DOGEUSDT'],  // Note: DOGEUSDT may not exist; verify if needed
-    //   ['DOGEUSD', 'DOGEUSDT'],
-    //   ['DOTUSD', 'DOTUSDT'],    // Note: DOTUSDT may not exist; verify if needed
-    //   ['DOTUSD', 'DOTUSDT'],
-    //   ['DYDXUSD', 'DYDXUSDT'],
-    //   ['ENAUSD', 'ENAUSDT'],
-    //   ['EOSUSD', 'EOSUSDT'],
-    //   ['ETHFIUSD', 'ETHFIUSDT'],
-    //   ['ETHUSD', 'ETHUSDT'],
-    //   ['FILUSD', 'FILUSDT'],
-    //   ['FLOKIUSD', 'FLOKIUSDT'],
-    //   ['FTMUSD', 'FTMUSDT'],
-    //   ['INJUSD', 'INJUSDT'],
-    //   ['JTOUSD', 'JTOUSDT'],
-    //   ['LDOUSD', 'LDOUSDT'],
-    //   ['LINKUSD', 'LINKUSDT'],  // Note: LINKUSDT may not exist; verify if needed
-    //   ['LINKUSD', 'LINKUSDT'],
-    //   ['LTCUSD', 'LTCUSDT'],    // Note: LTCUSDT may not exist; verify if needed
-    //   ['LTCUSD', 'LTCUSDT'],
-    //   ['MANAUSD', 'MANAUSDT'],
-    //   ['MANTAUSD', 'MANTAUSDT'],
-    //   ['MASKUSD', 'MASKUSDT'],
-    //   ['MATICUSD', 'MATICUSDT'],// Note: MATICUSDT may not exist; verify if needed
-    //   ['MATICUSD', 'MATICUSDT'],
-    //   ['MEMEUSD', 'MEMEUSDT'],
-    //   ['NEARUSD', 'NEARUSDT'],
-    //   ['NOTUSD', 'NOTUSDT'],
-    //   ['ONDOUSD', 'ONDOUSDT'],
-    //   ['OPUSD', 'OPUSDT'],
-    //   ['ORDIUSD', 'ORDIUSDT'],
-    //   ['PENDLEUSD', 'PENDLEUSDT'],
-    //   ['PEOPLEUSD', 'PEOPLEUSDT'],
-    //   ['PEPEUSD', 'PEPEUSDT'],
-    //   ['RSRUSD', 'RSRUSDT'],
-    //   ['RUNEUSD', 'RUNEUSDT'],
-    //   ['SANDUSD', 'SANDUSDT'],
-    //   ['SEIUSD', 'SEIUSDT'],
-    //   ['SOLUSD', 'SOLUSDT'],    // Note: SOLUSDT may not exist; verify if needed
-    //   ['SOLUSD', 'SOLUSDT'],
-    //   ['STRKUSD', 'STRKUSDT'],
-    //   ['STXUSD', 'STXUSDT'],
-    //   ['SUIUSD', 'SUIUSDT'],
-    //   ['SUSHIUSD', 'SUSHIUSDT'],
-    //   ['THETAUSD', 'THETAUSDT'],
-    //   ['TIAUSD', 'TIAUSDT'],
-    //   ['TRBUSD', 'TRBUSDT'],
-    //   ['TRXUSD', 'TRXUSDT'],
-    //   ['UNIUSD', 'UNIUSDT'],    // Note: UNIUSDT may not exist; verify if needed
-    //   ['UNIUSD', 'UNIUSDT'],
-    //   ['WIFUSD', 'WIFUSDT'],
-    //   ['WLDUSD', 'WLDUSDT'],
-    //   ['XAIUSD', 'XAIUSDT'],
-    //   ['XRPUSD', 'XRPUSDT'],    // Note: XRPUSDT may not exist; verify if needed
-    //   ['XRPUSD', 'XRPUSDT'],
-    //   ['EDENUSD', 'EDENUSDT'],
-    //   ['POLUSD', 'POLUSDT'],
-    // ]);
+//     this.deltaToPi42Map = new Map([
+//   ['ETHUSD', 'ETHUSDT'],
+//   ['AAVEUSD', 'AAVEUSDT'],  // Note: AAVEUSDT may not exist; verify if needed
+//   ['AAVEUSD', 'AAVEUSDT'],
+//   ['ADAUSD', 'ADAUSDT'],    // Note: ADAUSDT may not exist; verify if needed
+//   ['ADAUSD', 'ADAUSDT'],
+//   ['ALGOUSD', 'ALGOUSDT'],  // Note: ALGOUSDT may not exist; verify if needed
+//   ['ALGOUSD', 'ALGOUSDT'],
+//   ['ALTUSD', 'ALTUSDT'],
+//   ['APTUSD', 'APTUSDT'],
+//   ['ARBUSD', 'ARBUSDT'],
+//   ['ARUSD', 'ARUSDT'],
+//   ['ATOMUSD', 'ATOMUSDT'],
+//   ['ATOMUSD', 'ATOMUSDT'],
+//   ['AVAXUSD', 'AVAXUSDT'],  // Note: AVAXUSDT may not exist; verify if needed
+//   ['AVAXUSD', 'AVAXUSDT'],
+//   ['AXSUSD', 'AXSUSDT'],
+//   ['BBUSD', 'BBUSDT'],
+//   ['BCHUSD', 'BCHUSDT'],    // Note: BCHUSDT may not exist; verify if needed
+//   ['BCHUSD', 'BCHUSDT'],
+//   ['BNBUSD', 'BNBUSDT'],     // Note: BNBUSDT may not exist; verify if needed
+//   ['BNBUSD', 'BNBUSDT'],
+//   ['BONKUSD', 'BONKUSDT'],
+//   ['BTCUSD', 'BTCUSDT'],
+//   ['CHZUSD', 'CHZUSDT'],
+//   ['CRVUSD', 'CRVUSDT'],
+//   ['DOGEUSD', 'DOGEUSDT'],  // Note: DOGEUSDT may not exist; verify if needed
+//   ['DOGEUSD', 'DOGEUSDT'],
+//   ['DOTUSD', 'DOTUSDT'],    // Note: DOTUSDT may not exist; verify if needed
+//   ['DOTUSD', 'DOTUSDT'],
+//   ['DYDXUSD', 'DYDXUSDT'],
+//   ['ENAUSD', 'ENAUSDT'],
+//   ['EOSUSD', 'EOSUSDT'],
+//   ['ETHFIUSD', 'ETHFIUSDT'],
+//   ['ETHUSD', 'ETHUSDT'],
+//   ['FILUSD', 'FILUSDT'],
+//   ['FLOKIUSD', 'FLOKIUSDT'],
+//   ['FTMUSD', 'FTMUSDT'],
+//   ['INJUSD', 'INJUSDT'],
+//   ['JTOUSD', 'JTOUSDT'],
+//   ['LDOUSD', 'LDOUSDT'],
+//   ['LINKUSD', 'LINKUSDT'],  // Note: LINKUSDT may not exist; verify if needed
+//   ['LINKUSD', 'LINKUSDT'],
+//   ['LTCUSD', 'LTCUSDT'],    // Note: LTCUSDT may not exist; verify if needed
+//   ['LTCUSD', 'LTCUSDT'],
+//   ['MANAUSD', 'MANAUSDT'],
+//   ['MANTAUSD', 'MANTAUSDT'],
+//   ['MASKUSD', 'MASKUSDT'],
+//   ['MATICUSD', 'MATICUSDT'],// Note: MATICUSDT may not exist; verify if needed
+//   ['MATICUSD', 'MATICUSDT'],
+//   ['MEMEUSD', 'MEMEUSDT'],
+//   ['NEARUSD', 'NEARUSDT'],
+//   ['NOTUSD', 'NOTUSDT'],
+//   ['ONDOUSD', 'ONDOUSDT'],
+//   ['OPUSD', 'OPUSDT'],
+//   ['ORDIUSD', 'ORDIUSDT'],
+//   ['PENDLEUSD', 'PENDLEUSDT'],
+//   ['PEOPLEUSD', 'PEOPLEUSDT'],
+//   ['PEPEUSD', 'PEPEUSDT'],
+//   ['RSRUSD', 'RSRUSDT'],
+//   ['RUNEUSD', 'RUNEUSDT'],
+//   ['SANDUSD', 'SANDUSDT'],
+//   ['SEIUSD', 'SEIUSDT'],
+//   ['SOLUSD', 'SOLUSDT'],    // Note: SOLUSDT may not exist; verify if needed
+//   ['SOLUSD', 'SOLUSDT'],
+//   ['STRKUSD', 'STRKUSDT'],
+//   ['STXUSD', 'STXUSDT'],
+//   ['SUIUSD', 'SUIUSDT'],
+//   ['SUSHIUSD', 'SUSHIUSDT'],
+//   ['THETAUSD', 'THETAUSDT'],
+//   ['TIAUSD', 'TIAUSDT'],
+//   ['TRBUSD', 'TRBUSDT'],
+//   ['TRXUSD', 'TRXUSDT'],
+//   ['UNIUSD', 'UNIUSDT'],    // Note: UNIUSDT may not exist; verify if needed
+//   ['UNIUSD', 'UNIUSDT'],
+//   ['WIFUSD', 'WIFUSDT'],
+//   ['WLDUSD', 'WLDUSDT'],
+//   ['XAIUSD', 'XAIUSDT'],
+//   ['XRPUSD', 'XRPUSDT'],    // Note: XRPUSDT may not exist; verify if needed
+//   ['XRPUSD', 'XRPUSDT'],
+//   ['EDENUSD', 'EDENUSDT'],
+//   ['POLUSD', 'POLUSDT'],
+// ]);
 
-    this.deltaToPi42Map = new Map([
-      ["EDENUSD", "EDENUSDT"],
-      ["POLUSD", "POLUSDT"],
-      ["AUCTIONUSD", "AUCTIONUSDT"],
-      ["WIFUSD", "WIFUSDT"],
-      ["TRBUSD", "TRBUSDT"],
-      ["ZROUSD", "ZROUSDT"],
-      // ['RSRUSD', 'RSRUSDT'], 8h
-      ["SONICUSD", "SONICUSDT"],
-      ["MUBARAKUSD", "MUBARAKUSDT"],
-      ["HYPEUSD", "HYPEUSDT"],
-      ["RAREUSD", "RAREUSDT"],
-      ["MASKUSD", "MASKUSDT"],
-      ["ENSUSD", "ENSUSDT"],
-      // ['WLDUSD', 'WLDUSDT'], 8h
-      ["PENDLEUSD", "PENDLEUSDT"],
-      ["1MBABYDOGEUSD", "1MBABYDOGEUSDT"],
-      ["TRXUSD", "TRXUSDT"],
-      // ['BNBUSD', 'BNBUSDT'], 8h
-      // ['ALGOUSD', 'ALGOUSDT'], 8h
-      // ['LDOUSD', 'LDOUSDT'], 8h
-      ["INITUSD", "INITUSDT"],
-      ["PROVEUSD", "PROVEUSDT"],
-      ["MOVEUSD", "MOVEUSDT"],
-      ["VINEUSD", "VINEUSDT"],
-      ["SKLUSD", "SKLUSDT"],
-      ["BCHUSD", "BCHUSDT"],
-      ["LISTAUSD", "LISTAUSDT"],
-      ["GLMUSD", "GLMUSDT"],
-      // ['UNIUSD', 'UNIUSDT'], 8h
-      // ['ATOMUSD', 'ATOMUSDT'], 8h
-      ["EIGENUSD", "EIGENUSDT"],
-      // ['MANAUSD', 'MANAUSDT'], 8h
-      ["AIXBTUSD", "AIXBTUSDT"],
-      // ['DYDXUSD', 'DYDXUSDT'], 8h
-      // ['SANDUSD', 'SANDUSDT'], 8h
-      ["MELANIAUSD", "MELANIAUSDT"],
-      // ['KSMUSD', 'KSMUSDT'], 8h
-      ["VIRTUALUSD", "VIRTUALUSDT"],
-      ["SUSD", "SUSDT"],
-      ["VANAUSD", "VANAUSDT"],
-      ["IOUSD", "IOUSDT"],
-      // ['XLMUSD', 'XLMUSDT'], 8h
-      ["ETHUSD", "ETHUSDT"],
-      ["SAHARAUSD", "SAHARAUSDT"],
-      ["SOLVUSD", "SOLVUSDT"],
-      ["CAKEUSD", "CAKEUSDT"],
-      ["MEMEUSD", "MEMEUSDT"],
-      ["LAYERUSD", "LAYERUSDT"],
-      // ['DOTUSD', 'DOTUSDT'], 8h
-      ["ZKUSD", "ZKUSDT"],
-      ["SUNUSD", "SUNUSDT"],
-      // ['STXUSD', 'STXUSDT'], 8h
-      // ['ZECUSD', 'ZECUSDT'], 8h
-      ["PUMPUSD", "PUMPUSDT"],
-      ["PNUTUSD", "PNUTUSDT"],
-      ["ASTERUSD", "ASTERUSDT"],
-      ["JTOUSD", "JTOUSDT"],
-      ["SPXUSD", "SPXUSDT"],
-      // ['ADAUSD', 'ADAUSDT'], 8h
-      ["BIOUSD", "BIOUSDT"],
-      ["IPUSD", "IPUSDT"],
-      ["BBUSD", "BBUSDT"],
-      // ['PEOPLEUSD', 'PEOPLEUSDT'], 8h
-      ["XRPUSD", "XRPUSDT"],
-      ["TOWNSUSD", "TOWNSUSDT"],
-      ["LTCUSD", "LTCUSDT"],
-      ["GOATUSD", "GOATUSDT"],
-      ["ONDOUSD", "ONDOUSDT"],
-      ["USUALUSD", "USUALUSDT"],
-      // ['ARBUSD', 'ARBUSDT'], 8h
-      // ['SUSHIUSD', 'SUSHIUSDT'], 8h
-      ["AAVEUSD", "AAVEUSDT"],
-      ["MANTAUSD", "MANTAUSDT"],
-      ["API3USD", "API3USDT"],
-      ["RUNEUSD", "RUNEUSDT"],
-      ["ENAUSD", "ENAUSDT"],
-      ["HIVEUSD", "HIVEUSDT"],
-      // ['JASMYUSD', 'JASMYUSDT'], 8h
-      // ['SEIUSD', 'SEIUSDT'], 8h
-      // ['APTUSD', 'APTUSDT'], 8h
-      ["SOLUSD", "SOLUSDT"],
-      ["TRUMPUSD", "TRUMPUSDT"],
-      ["TAOUSD", "TAOUSDT"],
-      ["POPCATUSD", "POPCATUSDT"],
-      ["SUIUSD", "SUIUSDT"],
-      ["ORDIUSD", "ORDIUSDT"],
-      ["VVVUSD", "VVVUSDT"],
-      ["XPLUSD", "XPLUSDT"],
-      ["MEUSD", "MEUSDT"],
-      ["DOGEUSD", "DOGEUSDT"],
-      ["AVAAIUSD", "AVAAIUSDT"],
-      // ['ETCUSD', 'ETCUSDT'], 8h
-      ["PENGUUSD", "PENGUUSDT"],
-      ["XAIUSD", "XAIUSDT"],
-      ["ALTUSD", "ALTUSDT"],
-      ["SAGAUSD", "SAGAUSDT"],
-      ["MOODENGUSD", "MOODENGUSDT"],
-      ["TIAUSD", "TIAUSDT"],
-      ["BTCUSD", "BTCUSDT"],
-      ["INJUSD", "INJUSDT"],
-      ["BMTUSD", "BMTUSDT"],
-      // ['IOTAUSD', 'IOTAUSDT'], 8h
-      ["ETHFIUSD", "ETHFIUSDT"],
-      ["BERAUSD", "BERAUSDT"],
-      ["JUPUSD", "JUPUSDT"],
-      ["HBARUSD", "HBARUSDT"],
-      ["GRIFFAINUSD", "GRIFFAINUSDT"],
-      ["ACTUSD", "ACTUSDT"],
-      ["FARTCOINUSD", "FARTCOINUSDT"],
-      ["DOGSUSD", "DOGSUSDT"],
-      // ['1000SATSUSD', '1000SATSUSDT'],
-      // ['BLURUSD', 'BLURUSDT'],
-      ["WCTUSD", "WCTUSDT"],
-      ["SIGNUSD", "SIGNUSDT"],
-      // ['GALAUSD', 'GALAUSDT'], 8h
-      // ['FILUSD', 'FILUSDT'], 8
-      ["ARCUSD", "ARCUSDT"],
-      ["KAITOUSD", "KAITOUSDT"],
-      ["OMUSD", "OMUSDT"],
-      ["SWARMSUSD", "SWARMSUSDT"],
-      ["COOKIEUSD", "COOKIEUSDT"],
-      ["FFUSD", "FFUSDT"],
-      ["REDUSD", "REDUSDT"],
-      ["AVAXUSD", "AVAXUSDT"],
-      // ['OPUSD', 'OPUSDT'], 8h
-      ["NOTUSD", "NOTUSDT"],
-      // ['NEARUSD', 'NEARUSDT'],8h
-      ["WLFIUSD", "WLFIUSDT"],
-      // ['LINKUSD', 'LINKUSDT'],
-      ["SOPHUSD", "SOPHUSDT"],
-    ]);
+
+this.deltaToPi42Map = new Map([
+  ['EDENUSD', 'EDENUSDT'],
+  ['POLUSD', 'POLUSDT'],
+  ['AUCTIONUSD', 'AUCTIONUSDT'],
+  ['WIFUSD', 'WIFUSDT'],
+  ['TRBUSD', 'TRBUSDT'],
+  ['ZROUSD', 'ZROUSDT'],
+  // ['RSRUSD', 'RSRUSDT'],
+  ['SONICUSD', 'SONICUSDT'],
+  ['MUBARAKUSD', 'MUBARAKUSDT'],
+  ['HYPEUSD', 'HYPEUSDT'],
+  ['RAREUSD', 'RAREUSDT'],
+  ['MASKUSD', 'MASKUSDT'],
+  ['ENSUSD', 'ENSUSDT'],
+  // ['WLDUSD', 'WLDUSDT'],
+  ['PENDLEUSD', 'PENDLEUSDT'],
+  ['1MBABYDOGEUSD', '1MBABYDOGEUSDT'],
+  ['TRXUSD', 'TRXUSDT'],
+  // ['BNBUSD', 'BNBUSDT'],
+  // ['ALGOUSD', 'ALGOUSDT'],
+  // ['LDOUSD', 'LDOUSDT'],
+  ['INITUSD', 'INITUSDT'],
+  ['PROVEUSD', 'PROVEUSDT'],
+  ['MOVEUSD', 'MOVEUSDT'],
+  ['VINEUSD', 'VINEUSDT'],
+  ['SKLUSD', 'SKLUSDT'],
+  ['BCHUSD', 'BCHUSDT'],
+  ['LISTAUSD', 'LISTAUSDT'],
+  ['GLMUSD', 'GLMUSDT'],
+  // ['UNIUSD', 'UNIUSDT'],
+  // ['ATOMUSD', 'ATOMUSDT'],
+  ['EIGENUSD', 'EIGENUSDT'],
+  // ['MANAUSD', 'MANAUSDT'],
+  ['AIXBTUSD', 'AIXBTUSDT'],
+  // ['DYDXUSD', 'DYDXUSDT'],
+  // ['SANDUSD', 'SANDUSDT'],
+  ['MELANIAUSD', 'MELANIAUSDT'],
+  // ['KSMUSD', 'KSMUSDT'],
+  ['VIRTUALUSD', 'VIRTUALUSDT'],
+  ['SUSD', 'SUSDT'],
+  ['VANAUSD', 'VANAUSDT'],
+  ['IOUSD', 'IOUSDT'],
+  // ['XLMUSD', 'XLMUSDT'],
+  ['ETHUSD', 'ETHUSDT'],
+  ['SAHARAUSD', 'SAHARAUSDT'],
+  ['SOLVUSD', 'SOLVUSDT'],
+  ['CAKEUSD', 'CAKEUSDT'],
+  ['MEMEUSD', 'MEMEUSDT'],
+  ['LAYERUSD', 'LAYERUSDT'],
+  // ['DOTUSD', 'DOTUSDT'],
+  ['ZKUSD', 'ZKUSDT'],
+  ['SUNUSD', 'SUNUSDT'],
+  // ['STXUSD', 'STXUSDT'],
+  // ['ZECUSD', 'ZECUSDT'],
+  ['PUMPUSD', 'PUMPUSDT'],
+  ['PNUTUSD', 'PNUTUSDT'],
+  ['ASTERUSD', 'ASTERUSDT'],
+  ['JTOUSD', 'JTOUSDT'],
+  ['SPXUSD', 'SPXUSDT'],
+  // ['ADAUSD', 'ADAUSDT'],
+  ['BIOUSD', 'BIOUSDT'],
+  ['IPUSD', 'IPUSDT'],
+  ['BBUSD', 'BBUSDT'],
+  // ['PEOPLEUSD', 'PEOPLEUSDT'],
+  ['XRPUSD', 'XRPUSDT'],
+  ['TOWNSUSD', 'TOWNSUSDT'],
+  ['LTCUSD', 'LTCUSDT'],
+  ['GOATUSD', 'GOATUSDT'],
+  ['ONDOUSD', 'ONDOUSDT'],
+  ['USUALUSD', 'USUALUSDT'],
+  // ['ARBUSD', 'ARBUSDT'],
+  // ['SUSHIUSD', 'SUSHIUSDT'],
+  ['AAVEUSD', 'AAVEUSDT'],
+  ['MANTAUSD', 'MANTAUSDT'],
+  ['API3USD', 'API3USDT'],
+  ['RUNEUSD', 'RUNEUSDT'],
+  ['ENAUSD', 'ENAUSDT'],
+  ['HIVEUSD', 'HIVEUSDT'],
+  // ['JASMYUSD', 'JASMYUSDT'],
+  // ['SEIUSD', 'SEIUSDT'],
+  // ['APTUSD', 'APTUSDT'],
+  ['SOLUSD', 'SOLUSDT'],
+  ['TRUMPUSD', 'TRUMPUSDT'],
+  ['TAOUSD', 'TAOUSDT'],
+  ['POPCATUSD', 'POPCATUSDT'],
+  ['SUIUSD', 'SUIUSDT'],
+  ['ORDIUSD', 'ORDIUSDT'],
+  ['VVVUSD', 'VVVUSDT'],
+  ['XPLUSD', 'XPLUSDT'],
+  ['MEUSD', 'MEUSDT'],
+  ['DOGEUSD', 'DOGEUSDT'],
+  ['AVAAIUSD', 'AVAAIUSDT'],
+  // ['ETCUSD', 'ETCUSDT'],
+  ['PENGUUSD', 'PENGUUSDT'],
+  ['XAIUSD', 'XAIUSDT'],
+  ['ALTUSD', 'ALTUSDT'],
+  ['SAGAUSD', 'SAGAUSDT'],
+  ['MOODENGUSD', 'MOODENGUSDT'],
+  ['TIAUSD', 'TIAUSDT'],
+  ['BTCUSD', 'BTCUSDT'],
+  ['INJUSD', 'INJUSDT'],
+  ['BMTUSD', 'BMTUSDT'],
+  // ['IOTAUSD', 'IOTAUSDT'],
+  ['ETHFIUSD', 'ETHFIUSDT'],
+  ['BERAUSD', 'BERAUSDT'],
+  ['JUPUSD', 'JUPUSDT'],
+  ['HBARUSD', 'HBARUSDT'],
+  ['GRIFFAINUSD', 'GRIFFAINUSDT'],
+  ['ACTUSD', 'ACTUSDT'],
+  ['FARTCOINUSD', 'FARTCOINUSDT'],
+  ['DOGSUSD', 'DOGSUSDT'],
+  // ['1000SATSUSD', '1000SATSUSDT'],
+  ['BLURUSD', 'BLURUSDT'],
+  ['WCTUSD', 'WCTUSDT'],
+  ['SIGNUSD', 'SIGNUSDT'],
+  // ['GALAUSD', 'GALAUSDT'],
+  // ['FILUSD', 'FILUSDT'],
+  ['ARCUSD', 'ARCUSDT'],
+  ['KAITOUSD', 'KAITOUSDT'],
+  ['OMUSD', 'OMUSDT'],
+  ['SWARMSUSD', 'SWARMSUSDT'],
+  ['COOKIEUSD', 'COOKIEUSDT'],
+  ['FFUSD', 'FFUSDT'],
+  ['REDUSD', 'REDUSDT'],
+  ['AVAXUSD', 'AVAXUSDT'],
+  // ['OPUSD', 'OPUSDT'],
+  ['NOTUSD', 'NOTUSDT'],
+  // ['NEARUSD', 'NEARUSDT'],
+  ['WLFIUSD', 'WLFIUSDT'],
+  // ['LINKUSD', 'LINKUSDT'],
+  ['SOPHUSD', 'SOPHUSDT'],
+]);
     // Reverse mapping
     this.pi42ToDeltaMap = new Map(
-      Array.from(this.deltaToPi42Map.entries()).map(([k, v]) => [v, k]),
+      Array.from(this.deltaToPi42Map.entries()).map(([k, v]) => [v, k])
     );
 
     // Extract base tokens for dynamic mapping
     this.baseTokens = new Set(
-      Array.from(this.deltaToPi42Map.keys()).map((s) =>
-        this.extractBaseToken(s),
-      ),
+      Array.from(this.deltaToPi42Map.keys()).map(s => this.extractBaseToken(s))
     );
   }
 
@@ -240,7 +240,7 @@ class SymbolMapper {
    * Extract base token from Delta symbol (BTCUSD -> BTC)
    */
   extractBaseToken(deltaSymbol) {
-    return deltaSymbol.replace(/USD$/, "");
+    return deltaSymbol.replace(/USD$/, '');
   }
 
   /**
@@ -256,7 +256,7 @@ class SymbolMapper {
 
     // Try dynamic conversion
     const baseToken = this.extractBaseToken(deltaSymbol);
-    if (baseToken && deltaSymbol.endsWith("USD")) {
+    if (baseToken && deltaSymbol.endsWith('USD')) {
       return `${baseToken}_USDT`;
     }
 
@@ -275,8 +275,8 @@ class SymbolMapper {
     }
 
     // Try dynamic conversion
-    if (pi42Symbol.endsWith("_USDT")) {
-      const baseToken = pi42Symbol.replace(/_USDT$/, "");
+    if (pi42Symbol.endsWith('_USDT')) {
+      const baseToken = pi42Symbol.replace(/_USDT$/, '');
       return `${baseToken}USD`;
     }
 
