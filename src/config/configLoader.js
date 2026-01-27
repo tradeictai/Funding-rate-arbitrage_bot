@@ -44,7 +44,8 @@ const staticConfig = {
     password: process.env.REDIS_PASSWORD || undefined,
   },
   mongodb: {
-    uri: process.env.MONGODB_URI || "mongodb://localhost:27017/funding-arbitrage",
+    uri:
+      process.env.MONGODB_URI || "mongodb://localhost:27017/funding-arbitrage",
     dbName: process.env.MONGODB_DB_NAME || "funding-arbitrage",
   },
   env: process.env.NODE_ENV || "development",
@@ -59,17 +60,22 @@ function getDefaultTradingConfig() {
     useFundPct: parseFloat(process.env.USE_FUND_PCT) || 0.15,
     primaryThreshold: parseFloat(process.env.PRIMARY_THRESHOLD) || 0.1,
     secondaryThreshold: parseFloat(process.env.SECONDARY_THRESHOLD) || 0.1,
-    fundingTimeWindowSeconds: parseInt(process.env.FUNDING_TIME_WINDOW_SECONDS) || 60,
-    bufferPercentForLiquidationProtection: parseFloat(process.env.BUFFER_PERCENT_FOR_LIQUIDATION_PROTECTION) || 30,
+    fundingTimeWindowSeconds:
+      parseInt(process.env.FUNDING_TIME_WINDOW_SECONDS) || 60,
+    bufferPercentForLiquidationProtection:
+      parseFloat(process.env.BUFFER_PERCENT_FOR_LIQUIDATION_PROTECTION) || 30,
     minFillPct: parseFloat(process.env.MIN_FILL_PCT) || 0.95,
     entryTimeoutSeconds: parseInt(process.env.ENTRY_TIMEOUT_SECONDS) || 30,
     pollIntervalSeconds: parseInt(process.env.POLL_INTERVAL_SECONDS) || 5,
-    maxWaitForFundingSeconds: parseInt(process.env.MAX_WAIT_FOR_FUNDING_SECONDS) || 300,
-    preFundingWindowMinutes: parseInt(process.env.PRE_FUNDING_WINDOW_MINUTES) || 5,
+    maxWaitForFundingSeconds:
+      parseInt(process.env.MAX_WAIT_FOR_FUNDING_SECONDS) || 300,
+    preFundingWindowMinutes:
+      parseInt(process.env.PRE_FUNDING_WINDOW_MINUTES) || 25,
     maxQueuedOpps: parseInt(process.env.MAX_QUEUED_OPPS) || 15,
     maxPositionSizeUSD: parseFloat(process.env.MAX_POSITION_SIZE_USD) || 1000,
     minPositionSizeUSD: parseFloat(process.env.MIN_POSITION_SIZE_USD) || 0.5,
-    minLiquidityMultiplier: parseFloat(process.env.MIN_LIQUIDITY_MULTIPLIER) || 3.0,
+    minLiquidityMultiplier:
+      parseFloat(process.env.MIN_LIQUIDITY_MULTIPLIER) || 3.0,
     maxSlippagePct: parseFloat(process.env.MAX_SLIPPAGE_PCT) || 0.1,
     orderbookDepth: parseInt(process.env.ORDERBOOK_DEPTH) || 20,
     minNetProfitPct: parseFloat(process.env.MIN_NET_PROFIT_PCT) || 0.05,
@@ -100,7 +106,7 @@ export async function loadConfigFromDB() {
     if (!configService.isConnected) {
       await configService.initialize(
         staticConfig.mongodb.uri,
-        staticConfig.mongodb.dbName
+        staticConfig.mongodb.dbName,
       );
     }
 
@@ -112,57 +118,92 @@ export async function loadConfigFromDB() {
 
     // Check each field individually
     console.log("\n🔍 FIELD-BY-FIELD ANALYSIS:");
-    
+
     const fields = [
-      'leverage', 
-      'useFundPct', 
-      'primaryThreshold', 
-      'secondaryThreshold',
-      'preFundingWindowMinutes',
-      'maxPositionSizeUSD',
-      'minPositionSizeUSD',
-      'minLiquidityMultiplier',
-      'maxSlippagePct',
-      'orderbookDepth',
-      'orderCooldownMinutes',
-      'bufferPercentForLiquidationProtection'
+      "leverage",
+      "useFundPct",
+      "primaryThreshold",
+      "secondaryThreshold",
+      "preFundingWindowMinutes",
+      "maxPositionSizeUSD",
+      "minPositionSizeUSD",
+      "minLiquidityMultiplier",
+      "maxSlippagePct",
+      "orderbookDepth",
+      "orderCooldownMinutes",
+      "bufferPercentForLiquidationProtection",
     ];
 
-    fields.forEach(field => {
+    fields.forEach((field) => {
       const dbValue = dbConfig[field];
-      const envKey = field.replace(/([A-Z])/g, '_$1').toUpperCase();
+      const envKey = field.replace(/([A-Z])/g, "_$1").toUpperCase();
       const envValue = process.env[envKey];
-      
+
       console.log(`\n   ${field}:`);
       console.log(`      DB Value: ${dbValue} (type: ${typeof dbValue})`);
-      console.log(`      .env Value: ${envValue} (parsed: ${parseFloat(envValue) || parseInt(envValue)})`);
-      console.log(`      Will use: ${dbValue ?? (parseFloat(envValue) || parseInt(envValue))}`);
+      console.log(
+        `      .env Value: ${envValue} (parsed: ${parseFloat(envValue) || parseInt(envValue)})`,
+      );
+      console.log(
+        `      Will use: ${dbValue ?? (parseFloat(envValue) || parseInt(envValue))}`,
+      );
     });
 
     // Merge DB config into runtime config with explicit priority
     console.log("\n🔄 MERGING CONFIGURATION...");
-    
+
     const newTradingConfig = {
       // DB values with .env fallback
       leverage: dbConfig.leverage ?? parseInt(process.env.LEVERAGE) ?? 10,
-      useFundPct: dbConfig.useFundPct ?? parseFloat(process.env.USE_FUND_PCT) ?? 0.15,
-      primaryThreshold: dbConfig.primaryThreshold ?? parseFloat(process.env.PRIMARY_THRESHOLD) ?? 0.1,
-      secondaryThreshold: dbConfig.secondaryThreshold ?? parseFloat(process.env.SECONDARY_THRESHOLD) ?? 0.1,
-      preFundingWindowMinutes: dbConfig.preFundingWindowMinutes ?? parseInt(process.env.PRE_FUNDING_WINDOW_MINUTES) ?? 5,
-      maxPositionSizeUSD: dbConfig.maxPositionSizeUSD ?? parseFloat(process.env.MAX_POSITION_SIZE_USD) ?? 1000,
-      minPositionSizeUSD: dbConfig.minPositionSizeUSD ?? parseFloat(process.env.MIN_POSITION_SIZE_USD) ?? 0.5,
-      minLiquidityMultiplier: dbConfig.minLiquidityMultiplier ?? parseFloat(process.env.MIN_LIQUIDITY_MULTIPLIER) ?? 3.0,
-      maxSlippagePct: dbConfig.maxSlippagePct ?? parseFloat(process.env.MAX_SLIPPAGE_PCT) ?? 0.1,
-      orderbookDepth: dbConfig.orderbookDepth ?? parseInt(process.env.ORDERBOOK_DEPTH) ?? 20,
-      orderCooldownMinutes: dbConfig.orderCooldownMinutes ?? parseInt(process.env.ORDER_COOLDOWN_MINUTES) ?? 5,
-      bufferPercentForLiquidationProtection: dbConfig.bufferPercentForLiquidationProtection ?? parseFloat(process.env.BUFFER_PERCENT_FOR_LIQUIDATION_PROTECTION) ?? 30,
+      useFundPct:
+        dbConfig.useFundPct ?? parseFloat(process.env.USE_FUND_PCT) ?? 0.15,
+      primaryThreshold:
+        dbConfig.primaryThreshold ??
+        parseFloat(process.env.PRIMARY_THRESHOLD) ??
+        0.1,
+      secondaryThreshold:
+        dbConfig.secondaryThreshold ??
+        parseFloat(process.env.SECONDARY_THRESHOLD) ??
+        0.1,
+      preFundingWindowMinutes:
+        dbConfig.preFundingWindowMinutes ??
+        parseInt(process.env.PRE_FUNDING_WINDOW_MINUTES) ??
+        5,
+      maxPositionSizeUSD:
+        dbConfig.maxPositionSizeUSD ??
+        parseFloat(process.env.MAX_POSITION_SIZE_USD) ??
+        1000,
+      minPositionSizeUSD:
+        dbConfig.minPositionSizeUSD ??
+        parseFloat(process.env.MIN_POSITION_SIZE_USD) ??
+        0.5,
+      minLiquidityMultiplier:
+        dbConfig.minLiquidityMultiplier ??
+        parseFloat(process.env.MIN_LIQUIDITY_MULTIPLIER) ??
+        3.0,
+      maxSlippagePct:
+        dbConfig.maxSlippagePct ??
+        parseFloat(process.env.MAX_SLIPPAGE_PCT) ??
+        0.1,
+      orderbookDepth:
+        dbConfig.orderbookDepth ?? parseInt(process.env.ORDERBOOK_DEPTH) ?? 20,
+      orderCooldownMinutes:
+        dbConfig.orderCooldownMinutes ??
+        parseInt(process.env.ORDER_COOLDOWN_MINUTES) ??
+        5,
+      bufferPercentForLiquidationProtection:
+        dbConfig.bufferPercentForLiquidationProtection ??
+        parseFloat(process.env.BUFFER_PERCENT_FOR_LIQUIDATION_PROTECTION) ??
+        30,
 
       // .env only fields
-      fundingTimeWindowSeconds: parseInt(process.env.FUNDING_TIME_WINDOW_SECONDS) || 60,
+      fundingTimeWindowSeconds:
+        parseInt(process.env.FUNDING_TIME_WINDOW_SECONDS) || 60,
       minFillPct: parseFloat(process.env.MIN_FILL_PCT) || 0.95,
       entryTimeoutSeconds: parseInt(process.env.ENTRY_TIMEOUT_SECONDS) || 30,
       pollIntervalSeconds: parseInt(process.env.POLL_INTERVAL_SECONDS) || 5,
-      maxWaitForFundingSeconds: parseInt(process.env.MAX_WAIT_FOR_FUNDING_SECONDS) || 300,
+      maxWaitForFundingSeconds:
+        parseInt(process.env.MAX_WAIT_FOR_FUNDING_SECONDS) || 300,
       maxQueuedOpps: parseInt(process.env.MAX_QUEUED_OPPS) || 15,
       minNetProfitPct: parseFloat(process.env.MIN_NET_PROFIT_PCT) || 0.05,
       paperTradingMode: process.env.PAPER_TRADING_MODE === "true" || false,
@@ -178,7 +219,8 @@ export async function loadConfigFromDB() {
     runtimeConfig.orderPlace = {
       delta: {
         apiKey: dbConfig.deltaApiKey || process.env.DELTA_API_KEY_trade || "",
-        apiSecret: dbConfig.deltaApiSecret || process.env.DELTA_API_SECRET_trade || "",
+        apiSecret:
+          dbConfig.deltaApiSecret || process.env.DELTA_API_SECRET_trade || "",
       },
       pi42: {
         apiKey: process.env.PI42_API_KEY_trade || "",
@@ -186,17 +228,26 @@ export async function loadConfigFromDB() {
       },
       coindcx: {
         apiKey: dbConfig.coindcxApiKey || process.env.COINDCX_API_KEY || "",
-        apiSecret: dbConfig.coindcxApiSecret || process.env.COINDCX_API_SECRET || "",
+        apiSecret:
+          dbConfig.coindcxApiSecret || process.env.COINDCX_API_SECRET || "",
       },
     };
 
     console.log("\n" + "=".repeat(70));
     console.log("✅ CONFIGURATION LOAD COMPLETE");
     console.log("=".repeat(70));
-    console.log(`   Leverage: ${runtimeConfig.trading.leverage} (from ${dbConfig.leverage !== undefined ? 'DB' : '.env'})`);
-    console.log(`   Use Fund %: ${runtimeConfig.trading.useFundPct} (from ${dbConfig.useFundPct !== undefined ? 'DB' : '.env'})`);
-    console.log(`   Primary Threshold: ${runtimeConfig.trading.primaryThreshold}% (from ${dbConfig.primaryThreshold !== undefined ? 'DB' : '.env'})`);
-    console.log(`   Max Position Size: $${runtimeConfig.trading.maxPositionSizeUSD} (from ${dbConfig.maxPositionSizeUSD !== undefined ? 'DB' : '.env'})`);
+    console.log(
+      `   Leverage: ${runtimeConfig.trading.leverage} (from ${dbConfig.leverage !== undefined ? "DB" : ".env"})`,
+    );
+    console.log(
+      `   Use Fund %: ${runtimeConfig.trading.useFundPct} (from ${dbConfig.useFundPct !== undefined ? "DB" : ".env"})`,
+    );
+    console.log(
+      `   Primary Threshold: ${runtimeConfig.trading.primaryThreshold}% (from ${dbConfig.primaryThreshold !== undefined ? "DB" : ".env"})`,
+    );
+    console.log(
+      `   Max Position Size: $${runtimeConfig.trading.maxPositionSizeUSD} (from ${dbConfig.maxPositionSizeUSD !== undefined ? "DB" : ".env"})`,
+    );
     console.log("=".repeat(70) + "\n");
 
     return runtimeConfig;

@@ -1,5 +1,5 @@
-import crypto from 'crypto';
-import config from '../config/config.js';
+import crypto from "crypto";
+import config from "../config/config.js";
 
 /**
  * Delta Exchange REST API Client
@@ -7,7 +7,7 @@ import config from '../config/config.js';
  */
 class DeltaAPI {
   constructor() {
-    this.baseUrl = 'https://api.india.delta.exchange';
+    this.baseUrl = "https://api.india.delta.exchange";
     this.apiKey = config.orderPlace.delta.apiKey;
     this.apiSecret = config.orderPlace.delta.apiSecret;
 
@@ -18,133 +18,162 @@ class DeltaAPI {
   /**
    * Generate authentication signature for Delta Exchange
    */
-  generateSignature(method, path, timestamp, body = '', secret = null) {
+  generateSignature(method, path, timestamp, body = "", secret = null) {
     const message = method + timestamp + path + body;
     const secretToUse = secret || this.apiSecret;
     return crypto
-      .createHmac('sha256', secretToUse)
+      .createHmac("sha256", secretToUse)
       .update(message)
-      .digest('hex');
+      .digest("hex");
   }
 
   /**
    * Make authenticated request to Delta Exchange
    */
   async request(method, endpoint, body = null, useTradeCreds = false) {
-  const isPublicProducts = method === 'GET' && endpoint === '/v2/products';
+    const isPublicProducts = method === "GET" && endpoint === "/v2/products";
 
-  let timestamp, apiKey, apiSecret, signature, headers;
-
-  if (!isPublicProducts) {
-    // Authenticated request (standard flow)
-    timestamp = Math.floor(Date.now() / 1000).toString();
-    const path = endpoint;
-    const bodyString = body ? JSON.stringify(body) : '';
-
-    apiKey = useTradeCreds ? this.apiKeyTrade : this.apiKey;
-    apiSecret = useTradeCreds ? this.apiSecretTrade : this.apiSecret;
-
-    signature = this.generateSignature(method.toUpperCase(), path, timestamp, bodyString, apiSecret);
-
-    headers = {
-      'api-key': apiKey,
-      'timestamp': timestamp,
-      'signature': signature,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'User-Agent': 'node-js-client'
-    };
-  } else {
-    // Public /v2/products → no auth headers
-    console.log('🌐 Calling public endpoint: /v2/products (no authentication)');
-    headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'User-Agent': 'node-js-client'
-    };
-  }
-
-  const options = {
-    method,
-    headers
-  };
-
-  if (body && (method === 'POST' || method === 'PUT')) {
-    const bodyString = JSON.stringify(body);
-    options.body = bodyString;
+    let timestamp, apiKey, apiSecret, signature, headers;
 
     if (!isPublicProducts) {
-      // Only log body for authenticated requests
-      console.log(`📤 Delta ${method} ${endpoint}:`, {
-        body: JSON.parse(bodyString),
-        headers: { 
-          'api-key': headers['api-key'] ? `${headers['api-key'].substring(0, 5)}...` : 'MISSING',
-          'timestamp': headers['timestamp'],
-          'signature': headers['signature'] ? `${headers['signature'].substring(0, 16)}...` : 'MISSING'
-        }
-      });
+      // Authenticated request (standard flow)
+      timestamp = Math.floor(Date.now() / 1000).toString();
+      const path = endpoint;
+      const bodyString = body ? JSON.stringify(body) : "";
+
+      apiKey = useTradeCreds ? this.apiKeyTrade : this.apiKey;
+      apiSecret = useTradeCreds ? this.apiSecretTrade : this.apiSecret;
+
+      signature = this.generateSignature(
+        method.toUpperCase(),
+        path,
+        timestamp,
+        bodyString,
+        apiSecret,
+      );
+
+      headers = {
+        "api-key": apiKey,
+        timestamp: timestamp,
+        signature: signature,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "node-js-client",
+      };
+    } else {
+      // Public /v2/products → no auth headers
+      console.log(
+        "🌐 Calling public endpoint: /v2/products (no authentication)",
+      );
+      headers = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "node-js-client",
+      };
     }
-  }
 
-  try {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, options);
-    const data = await response.json();
+    const options = {
+      method,
+      headers,
+    };
 
-    console.log(`Delta API ${method} ${endpoint} - Status: ${response.status}`);
+    if (body && (method === "POST" || method === "PUT")) {
+      const bodyString = JSON.stringify(body);
+      options.body = bodyString;
 
-    if (!response.ok) {
-      let errorMsg = '';
-      if (data?.error?.code === 'bad_schema' && data?.error?.context?.schema_errors) {
-        const schemaErrors = data.error.context.schema_errors;
-        errorMsg = `Schema validation failed: ${schemaErrors.map(e => `${e.path}: ${e.message}`).join('; ')}`;
-      } else if (data?.error) {
-        errorMsg = JSON.stringify(data.error);
-      } else {
-        errorMsg = JSON.stringify(data).substring(0, 200);
+      if (!isPublicProducts) {
+        // Only log body for authenticated requests
+        console.log(`📤 Delta ${method} ${endpoint}:`, {
+          body: JSON.parse(bodyString),
+          headers: {
+            "api-key": headers["api-key"]
+              ? `${headers["api-key"].substring(0, 5)}...`
+              : "MISSING",
+            timestamp: headers["timestamp"],
+            signature: headers["signature"]
+              ? `${headers["signature"].substring(0, 16)}...`
+              : "MISSING",
+          },
+        });
       }
-      throw new Error(`Delta API Error (${response.status}): ${errorMsg}`);
     }
 
-    return data;
-  } catch (error) {
-    console.error(`Delta API request failed: ${error.message}`);
-    throw error;
+    try {
+      const response = await fetch(`${this.baseUrl}${endpoint}`, options);
+      const data = await response.json();
+
+      console.log(
+        `Delta API ${method} ${endpoint} - Status: ${response.status}`,
+      );
+
+      if (!response.ok) {
+        let errorMsg = "";
+        if (
+          data?.error?.code === "bad_schema" &&
+          data?.error?.context?.schema_errors
+        ) {
+          const schemaErrors = data.error.context.schema_errors;
+          errorMsg = `Schema validation failed: ${schemaErrors.map((e) => `${e.path}: ${e.message}`).join("; ")}`;
+        } else if (data?.error) {
+          errorMsg = JSON.stringify(data.error);
+        } else {
+          errorMsg = JSON.stringify(data).substring(0, 200);
+        }
+        throw new Error(`Delta API Error (${response.status}): ${errorMsg}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error(`Delta API request failed: ${error.message}`);
+      throw error;
+    }
   }
-}
   /**
    * Get wallet balances
    */
   async getWalletBalance() {
     try {
-      const data = await this.request('GET', '/v2/wallet/balances');
+      const data = await this.request("GET", "/v2/wallet/balances");
       return data.result || data || [];
     } catch (error) {
-      console.error('Error fetching Delta balance:', error.message);
-      console.warn('⚠️ Using mock balance data for Delta');
-      return [{ asset_symbol: 'USDT', available_balance: '1000', balance: '1000' }];
+      console.error("Error fetching Delta balance:", error.message);
+
+      // If rate limited, use conservative mock balance (not 1000)
+      if (error.message && error.message.includes("429")) {
+        console.warn("⚠️ RATE LIMITED - Using safe mock balance for Delta");
+        console.warn("   → Using $20 USDT to allow small test positions");
+        return [{ asset_symbol: "USDT", available_balance: 20, balance: 20 }];
+      }
+
+      console.warn("⚠️ Using mock balance data for Delta");
+      return [{ asset_symbol: "USDT", available_balance: 20, balance: 20 }];
     }
   }
 
   /**
    * Get specific asset balance
    */
-  async getAssetBalance(asset = 'USD') {
+  async getAssetBalance(asset = "USD") {
     const balances = await this.getWalletBalance();
-    console.log('Delta balances:', balances);
-    
+    console.log("Delta balances:", balances);
+
     if (Array.isArray(balances)) {
-      const assetBalance = balances.find(b =>
-        b.asset_symbol === asset ||
-        b.asset === asset ||
-        b.currency === asset
+      // Support both USD and USDT since Delta uses USDT
+      const searchAssets = asset === "USD" ? ["USD", "USDT", "USDC"] : [asset];
+
+      const assetBalance = balances.find(
+        (b) =>
+          searchAssets.includes(b.asset_symbol) ||
+          searchAssets.includes(b.asset) ||
+          searchAssets.includes(b.currency),
       );
 
       if (assetBalance) {
         return parseFloat(
           assetBalance.available_balance ||
-          assetBalance.available ||
-          assetBalance.free ||
-          0
+            assetBalance.available ||
+            assetBalance.free ||
+            0,
         );
       }
     }
@@ -159,7 +188,7 @@ class DeltaAPI {
   async setLeverage(productId, leverage) {
     const body = { leverage: leverage.toString() };
     const endpoint = `/v2/products/${productId}/orders/leverage`;
-    return this.request('POST', endpoint, body, true);
+    return this.request("POST", endpoint, body, true);
   }
 
   /**
@@ -167,45 +196,55 @@ class DeltaAPI {
    */
   async getProductDetails(symbol) {
     try {
-      const data = await this.request('GET', `/v2/products/${symbol}`);
-      
+      const data = await this.request("GET", `/v2/products/${symbol}`);
+
       return data.result || data;
     } catch (error) {
-      console.error(`Error fetching Delta product details for ${symbol}:`, error.message);
+      console.error(
+        `Error fetching Delta product details for ${symbol}:`,
+        error.message,
+      );
       return null;
     }
   }
 
   async getLotSize(symbol) {
     try {
-      const data = await this.request('GET', `/v2/products`);
+      const data = await this.request("GET", `/v2/products`);
       const products = data.result || [];
 
-    const product = products.find(p => p.symbol === symbol);
+      const product = products.find((p) => p.symbol === symbol);
 
-    if (!product) {
-      console.log(`Product ${symbol} not found`);
-      return null;
-    }
+      if (!product) {
+        console.log(`Product ${symbol} not found`);
+        return null;
+      }
 
-    console.log(`\nContract Specs for ${symbol}:`);
-    console.log(`   Symbol: ${product.symbol}`);
-    console.log(`   Lot Size (contract_value): ${product.contract_value} USD per contract`);
-    console.log(`   Tick Size: ${product.tick_size}`);
-    console.log(`   Min Size: ${product.min_size || 'Not specified (check impact_size)'}`);
-    console.log(`   Impact Size: ${product.impact_size} contracts`);
-    console.log(`   Contract Type: ${product.contract_type}`);
+      console.log(`\nContract Specs for ${symbol}:`);
+      console.log(`   Symbol: ${product.symbol}`);
+      console.log(
+        `   Lot Size (contract_value): ${product.contract_value} USD per contract`,
+      );
+      console.log(`   Tick Size: ${product.tick_size}`);
+      console.log(
+        `   Min Size: ${product.min_size || "Not specified (check impact_size)"}`,
+      );
+      console.log(`   Impact Size: ${product.impact_size} contracts`);
+      console.log(`   Contract Type: ${product.contract_type}`);
 
-    return {
-      symbol: product.symbol,
-      contractValue: parseFloat(product.contract_value),
-      tickSize: product.tick_size,
-      minSize: product.min_size ? parseInt(product.min_size) : null,
-      impactSize: product.impact_size,
-      contractType: product.contract_type
-    };
+      return {
+        symbol: product.symbol,
+        contractValue: parseFloat(product.contract_value),
+        tickSize: product.tick_size,
+        minSize: product.min_size ? parseInt(product.min_size) : null,
+        impactSize: product.impact_size,
+        contractType: product.contract_type,
+      };
     } catch (error) {
-      console.error(`Error fetching Delta product details for ${symbol}:`, error.message);
+      console.error(
+        `Error fetching Delta product details for ${symbol}:`,
+        error.message,
+      );
       return null;
     }
   }
@@ -215,14 +254,26 @@ class DeltaAPI {
    */
   async getOrderbook(symbol, depth = 20) {
     try {
-      const data = await this.request('GET', `/v2/l2orderbook/${symbol}?depth=${depth}`);
+      const data = await this.request(
+        "GET",
+        `/v2/l2orderbook/${symbol}?depth=${depth}`,
+      );
       return data.result || data;
     } catch (error) {
-      console.error(`Error fetching Delta orderbook for ${symbol}:`, error.message);
+      console.error(
+        `Error fetching Delta orderbook for ${symbol}:`,
+        error.message,
+      );
       console.warn(`⚠️ Using mock orderbook data for ${symbol}`);
       return {
-        buy: [[43000, 1.5], [42990, 2.0]],
-        sell: [[43010, 1.5], [43020, 2.0]]
+        buy: [
+          [43000, 1.5],
+          [42990, 2.0],
+        ],
+        sell: [
+          [43010, 1.5],
+          [43020, 2.0],
+        ],
       };
     }
   }
@@ -230,31 +281,59 @@ class DeltaAPI {
   /**
    * Get current positions
    */
- async getAllPositions() {
+  async getAllPositions() {
     try {
       // Try /v2/positions/margined first (gets all margined positions)
-      const response = await this.request('GET', '/v2/positions/margined', null, true);
-      
+      const response = await this.request(
+        "GET",
+        "/v2/positions/margined",
+        null,
+        true,
+      );
+
       if (response.success) {
         const positions = response.result || [];
-        console.log(`✅ Delta getAllPositions: Found ${positions.length} position(s)`);
+        console.log(
+          `✅ Delta getAllPositions: Found ${positions.length} position(s)`,
+        );
         return positions;
       }
-      
+
       return [];
     } catch (error) {
-      console.error('Delta API getAllPositions error:', error.message);
-      
+      console.error("Delta API getAllPositions error:", error.message);
+
+      // 🔴 CRITICAL: Check if error is rate limit (429)
+      if (error.message && error.message.includes("429")) {
+        console.error("⚠️ RATE LIMITED - Cannot verify positions via REST");
+        console.error("   → Returning null to preserve existing WS data");
+        console.error(
+          "   → Do NOT clear position based on this failed API call",
+        );
+        return null; // null = API unavailable, [] = no positions
+      }
+
       // Fallback: try /v2/positions without product_id (some Delta versions support this)
       try {
-        const fallbackResponse = await this.request('GET', '/v2/positions', null, true);
+        const fallbackResponse = await this.request(
+          "GET",
+          "/v2/positions",
+          null,
+          true,
+        );
         if (fallbackResponse.success) {
           return fallbackResponse.result || [];
         }
       } catch (fallbackError) {
-        console.error('Delta API fallback also failed:', fallbackError.message);
+        console.error("Delta API fallback also failed:", fallbackError.message);
+
+        // Check fallback for rate limit too
+        if (fallbackError.message && fallbackError.message.includes("429")) {
+          console.error("⚠️ RATE LIMITED on fallback too");
+          return null;
+        }
       }
-      
+
       return [];
     }
   }
@@ -272,22 +351,27 @@ class DeltaAPI {
       }
 
       // If productId provided, get specific position
-      const response = await this.request('GET', `/v2/positions?product_id=${productId}`, null, true);
-      
+      const response = await this.request(
+        "GET",
+        `/v2/positions?product_id=${productId}`,
+        null,
+        true,
+      );
+
       if (response.success) {
         return response.result || [];
       } else {
-        throw new Error(response.message || 'Failed to fetch positions');
+        throw new Error(response.message || "Failed to fetch positions");
       }
     } catch (error) {
-      console.error('Delta API getPositions error:', error.message);
-      
+      console.error("Delta API getPositions error:", error.message);
+
       // If specific product fails, try getting all positions
       if (productId) {
-        console.log('Falling back to getAllPositions...');
+        console.log("Falling back to getAllPositions...");
         return await this.getAllPositions();
       }
-      
+
       return [];
     }
   }
@@ -297,7 +381,7 @@ class DeltaAPI {
    */
   async getPosition(symbol) {
     const positions = await this.getPositions();
-    return positions.find(p => p.product_symbol === symbol) || null;
+    return positions.find((p) => p.product_symbol === symbol) || null;
   }
 
   /**
@@ -315,80 +399,84 @@ class DeltaAPI {
    */
   async placeOrder(orderParams) {
     const {
-      productId,     // MUST be passed by caller
-      symbol,        // For reference/logging
+      productId, // MUST be passed by caller
+      symbol, // For reference/logging
       side,
       orderType,
       size,
       limitPrice,
       postOnly = false,
-      reduceOnly = false
+      reduceOnly = false,
     } = orderParams;
 
     // Validate required parameters
     if (!productId) {
-      throw new Error('productId is required for Delta orders');
+      throw new Error("productId is required for Delta orders");
     }
 
     if (!side || !orderType || !size || size <= 0) {
-      throw new Error('Invalid order parameters: side, orderType, and size are required');
+      throw new Error(
+        "Invalid order parameters: side, orderType, and size are required",
+      );
     }
 
-    console.log('\n📝 Delta Order Parameters Received:', orderParams);
+    console.log("\n📝 Delta Order Parameters Received:", orderParams);
 
     // Validate side
-    const validSides = ['buy', 'sell'];
+    const validSides = ["buy", "sell"];
     const normalizedSide = side.toLowerCase();
     if (!validSides.includes(normalizedSide)) {
       throw new Error(`Invalid side: ${side}. Must be 'buy' or 'sell'`);
     }
 
     // Validate order type
-    const validOrderTypes = ['market_order', 'limit_order'];
+    const validOrderTypes = ["market_order", "limit_order"];
     const normalizedOrderType = orderType.toLowerCase();
     if (!validOrderTypes.includes(normalizedOrderType)) {
-      throw new Error(`Invalid orderType: ${orderType}. Must be 'market_order' or 'limit_order'`);
+      throw new Error(
+        `Invalid orderType: ${orderType}. Must be 'market_order' or 'limit_order'`,
+      );
     }
 
     // Build order data according to Delta API spec
     const orderData = {
-      product_id: parseInt(productId),           // MUST be integer
-      size: Math.floor(parseFloat(size)),        // MUST be integer (number of contracts)
-      side: normalizedSide,                       // 'buy' or 'sell'
-      order_type: normalizedOrderType,            // 'market_order' or 'limit_order'
-      time_in_force: "gtc",                       // Good till cancelled
-      post_only: postOnly,                        // Post only flag
-      reduce_only: reduceOnly                     // Reduce only flag
+      product_id: parseInt(productId), // MUST be integer
+      size: Math.floor(parseFloat(size)), // MUST be integer (number of contracts)
+      side: normalizedSide, // 'buy' or 'sell'
+      order_type: normalizedOrderType, // 'market_order' or 'limit_order'
+      time_in_force: "gtc", // Good till cancelled
+      post_only: postOnly, // Post only flag
+      reduce_only: reduceOnly, // Reduce only flag
     };
 
     // Add limit_price for limit orders
-    if (normalizedOrderType === 'limit_order') {
+    if (normalizedOrderType === "limit_order") {
       if (!limitPrice || limitPrice <= 0) {
-        throw new Error('limit_price is required for limit_order');
+        throw new Error("limit_price is required for limit_order");
       }
       orderData.limit_price = limitPrice.toString(); // Must be string
     }
 
-    console.log('\n📤 Delta Order Data (Final):', orderData);
-    console.log('🔑 Using trade API credentials for Delta order placement');
+    console.log("\n📤 Delta Order Data (Final):", orderData);
+    console.log("🔑 Using trade API credentials for Delta order placement");
 
     try {
-      const data = await this.request('POST', '/v2/orders', orderData, true);
-      console.log('✅ Delta order response:', data);
+      const data = await this.request("POST", "/v2/orders", orderData, true);
+      console.log("✅ Delta order response:", data);
       return data.result || data;
     } catch (error) {
-      console.error('❌ Delta order placement failed:', error.message);
-      
+      console.error("❌ Delta order placement failed:", error.message);
+
       // Enhanced error logging
-      console.error('📊 Order Debug Info:', {
+      console.error("📊 Order Debug Info:", {
         productId: orderData.product_id,
-        symbol: symbol || 'unknown',
+        symbol: symbol || "unknown",
         size: orderData.size,
         side: orderData.side,
         orderType: orderData.order_type,
-        limitPrice: orderData.limit_price
+        limitPrice: orderData.limit_price,
       });
-      
+
       throw error;
     }
   }
@@ -412,8 +500,12 @@ class DeltaAPI {
       const product = await this.getProductDetails(symbol);
       if (product) {
         return {
-          makerFee: parseFloat(product.maker_commission_rate || product.makerFee || 0.0002),
-          takerFee: parseFloat(product.taker_commission_rate || product.takerFee || 0.0005)
+          makerFee: parseFloat(
+            product.maker_commission_rate || product.makerFee || 0.0002,
+          ),
+          takerFee: parseFloat(
+            product.taker_commission_rate || product.takerFee || 0.0005,
+          ),
         };
       }
     } catch (error) {
@@ -423,7 +515,7 @@ class DeltaAPI {
     console.warn(`⚠️ Using default fee rates for ${symbol}`);
     return {
       makerFee: 0.0002,
-      takerFee: 0.0005
+      takerFee: 0.0005,
     };
   }
 
@@ -432,7 +524,9 @@ class DeltaAPI {
    */
   async cancelOrder(orderId, symbol) {
     const productId = await this.getProductId(symbol);
-    const data = await this.request('DELETE', `/v2/orders/${orderId}`, { product_id: productId });
+    const data = await this.request("DELETE", `/v2/orders/${orderId}`, {
+      product_id: productId,
+    });
     return data.result;
   }
 
@@ -443,17 +537,17 @@ class DeltaAPI {
    */
   async getOpenOrders(params = {}) {
     try {
-      let endpoint = '/v2/orders';
+      let endpoint = "/v2/orders";
 
       // Build query string if parameters are provided
       if (Object.keys(params).length > 0) {
         const queryString = new URLSearchParams(
-          Object.entries(params).map(([k, v]) => [k, String(v)])
+          Object.entries(params).map(([k, v]) => [k, String(v)]),
         ).toString();
         endpoint += `?${queryString}`;
       }
 
-      const data = await this.request('GET', endpoint, null, true); // Use trade creds
+      const data = await this.request("GET", endpoint, null, true); // Use trade creds
       console.log("Delta open orders:", data);
       return data.result || data || [];
     } catch (error) {
@@ -469,12 +563,12 @@ class DeltaAPI {
    */
   async cancelAllOrders(filter = {}) {
     try {
-      const endpoint = '/v2/orders/all';
+      const endpoint = "/v2/orders/all";
 
       // Body is optional JSON filter object
       const body = Object.keys(filter).length > 0 ? filter : null;
 
-      const data = await this.request('DELETE', endpoint, body, true); // Use trade creds
+      const data = await this.request("DELETE", endpoint, body, true); // Use trade creds
       console.log("Cancel all Delta orders result:", data);
       return data.result || data;
     } catch (error) {

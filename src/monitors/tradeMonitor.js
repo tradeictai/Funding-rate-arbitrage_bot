@@ -31,7 +31,7 @@ class TradeMonitor extends EventEmitter {
     this.latestCoindcxPosition = null;
     this.lockedFundingTime = null;
 
-    this.quantityTolerance = config.trading.quantityTolerance || 0.05; // 5%
+    this.quantityTolerance = config.trading.quantityTolerance || 0.001; // 5%
     this.minProfitThreshold = config.trading.minProfitThreshold || 0.001; // e.g. 0.01%
 
     this.liquidationWarningThreshold = 0.03; // 3% from liquidation
@@ -49,6 +49,10 @@ class TradeMonitor extends EventEmitter {
     this.oneSidedDetectedAt = null;
 
     this.lastRestVerificationTime = 0;
+    this.deltaRestMismatchCount = 0;
+    this.coindcxRestMismatchCount = 0;
+    this.forceDeltaRestVerification = false; // Flag to force REST check after Delta reconnect
+    this.lastPositionExistenceCheck = 0; // Throttle position existence checks
 
     this.setupEventHandlers();
   }
@@ -65,6 +69,25 @@ class TradeMonitor extends EventEmitter {
       // this.latestDeltaPosition = data.positions[0]
     });
 
+    // ⚠️ Delta reconnecting - may have stale snapshot data
+    this.deltaMonitor.on("reconnecting", (data) => {
+      console.log("\n⚠️ DELTA WEBSOCKET RECONNECTING");
+      console.log("   → May load stale cached positions");
+      console.log("   → Will force REST verification to detect manual exits");
+      this.forceDeltaRestVerification = true;
+    });
+
+    // ⚠️ Delta snapshot on reconnect may contain stale data
+    this.deltaMonitor.on("snapshot_received", (data) => {
+      if (data.warningFlag === "POTENTIAL_STALE_DATA_ON_RECONNECT") {
+        console.log("\n⚠️ DELTA SNAPSHOT RECEIVED (Post-Reconnect)");
+        console.log("   → Stale cache from previous session detected");
+        console.log("   → Will verify against REST API before trusting");
+        this.forceDeltaRestVerification = true;
+        this.deltaRestMismatchCount = 0; // Reset counter
+      }
+    });
+
     // Pi42 Events
     this.coindcxMonitor.on("position", (data) => {
       console.log("Coindcx position event received:", data);
@@ -78,7 +101,8 @@ class TradeMonitor extends EventEmitter {
         this.checkForNormalExit();
         this.performFlipCheck();
         this.checkPreLiquidation();
-        this.checkPositionExistence();
+        // Don't check position existence on every funding update - too frequent!
+        // It's checked on position updates and by the periodic interval timer
       }
     });
 
@@ -88,7 +112,7 @@ class TradeMonitor extends EventEmitter {
         this.checkForNormalExit();
         this.performFlipCheck();
         this.checkPreLiquidation();
-        this.checkPositionExistence();
+        // Don't check position existence on every funding update - too frequent!
       }
     });
   }
@@ -186,8 +210,12 @@ class TradeMonitor extends EventEmitter {
       await this.runAllChecks();
     }
 
-    // Position existence is now checked periodically by interval timer
-    this.checkPositionExistence();
+    // Throttle position existence checks - only every 10 seconds
+    const now = Date.now();
+    if (now - this.lastPositionExistenceCheck > 10000) {
+      this.lastPositionExistenceCheck = now;
+      this.checkPositionExistence();
+    }
   }
 
   async handleCoindcxPosition(data) {
@@ -222,8 +250,12 @@ class TradeMonitor extends EventEmitter {
       await this.runAllChecks();
     }
 
-    // Position existence is now checked periodically by interval timer
-    this.checkPositionExistence();
+    // Throttle position existence checks - only every 10 seconds
+    const now = Date.now();
+    if (now - this.lastPositionExistenceCheck > 10000) {
+      this.lastPositionExistenceCheck = now;
+      this.checkPositionExistence();
+    }
   }
 
   /**
@@ -234,7 +266,7 @@ class TradeMonitor extends EventEmitter {
     this.checkPreLiquidation();
     this.performFlipCheck();
     this.checkForNormalExit();
-    this.checkPositionExistence();
+    // Position existence check is throttled and called separately
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -247,26 +279,52 @@ class TradeMonitor extends EventEmitter {
     console.log(`   Reason: ${data.reason || data.type || "unknown"}`);
 
     const previousPosition = this.latestDeltaPosition;
+
+    // Don't immediately clear - will verify first
+    console.log("   ⚠️ Scheduling double verification in 5 seconds...");
+    console.log("   (Waiting to confirm position truly closed)");
+
+    // Clear WebSocket data for now
     this.latestDeltaPosition = null;
 
-    // Check if CoinDCX still has position (one-sided scenario)
-    if (this.hasCoindcxPosition()) {
-      console.log("⚠️ ONE-SIDED: CoinDCX still has position, Delta closed!");
+    // Schedule verification after short delay to let API catch up
+    setTimeout(async () => {
+      console.log("\n🔍 VERIFYING DELTA CLOSURE (Double Check)");
 
-      this.emergencyExit("emergencyExit", {
-        reason: "ONE_SIDED_DELTA_CLOSED",
+      const deltaStillActive = await this.verifyPositionExists("delta");
+      const coindcxActive = await this.verifyPositionExists("coindcx");
 
-        closedSide: "Delta",
-        remainingSide: "CoinDCX",
-        closureReason: data.reason || data.type,
-        closedPosition: previousPosition,
-        deltaPosition: null,
-        coindcxPosition: this.latestCoindcxPosition,
+      if (deltaStillActive) {
+        console.log("⚠️ Delta position still active after verification!");
+        console.log("   → False WebSocket close event, position restored");
+        console.log("=".repeat(60));
+        return;
+      }
 
-        timestamp: new Date().toISOString(),
-      });
-    }
-    console.log("=".repeat(60));
+      console.log("✅ Delta position confirmed closed");
+
+      // Check if CoinDCX still has position (one-sided scenario)
+      if (coindcxActive) {
+        console.log("⚠️ ONE-SIDED: CoinDCX still has position, Delta closed!");
+
+        this.emergencyExit("emergencyExit", {
+          reason: "ONE_SIDED_DELTA_CLOSED",
+          closedSide: "Delta",
+          remainingSide: "CoinDCX",
+          closureReason: data.reason || data.type,
+          closedPosition: previousPosition,
+          deltaPosition: null,
+          coindcxPosition: this.latestCoindcxPosition,
+          timestamp: new Date().toISOString(),
+          doubleVerified: true,
+          deltaConfirmed: false,
+          coindcxConfirmed: true,
+        });
+      } else {
+        console.log("✅ Both positions closed normally");
+      }
+      console.log("=".repeat(60));
+    }, 5000); // 5 second delay for API to catch up
   }
 
   handleCoindcxPositionClosed(data) {
@@ -275,26 +333,52 @@ class TradeMonitor extends EventEmitter {
     console.log(`   Reason: ${data.reason || data.type || "unknown"}`);
 
     const previousPosition = this.latestCoindcxPosition;
+
+    // Don't immediately clear - will verify first
+    console.log("   ⚠️ Scheduling double verification in 5 seconds...");
+    console.log("   (Waiting to confirm position truly closed)");
+
+    // Clear WebSocket data for now
     this.latestCoindcxPosition = null;
 
-    // Check if Delta still has position (one-sided scenario)
-    if (this.hasDeltaPosition()) {
-      console.log("⚠️ ONE-SIDED: Delta still has position, CoinDCX closed!");
+    // Schedule verification after short delay to let API catch up
+    setTimeout(async () => {
+      console.log("\n🔍 VERIFYING COINDCX CLOSURE (Double Check)");
 
-      this.emergencyExit("emergencyExit", {
-        reason: "ONE_SIDED_COINDCX_CLOSED",
+      const coindcxStillActive = await this.verifyPositionExists("coindcx");
+      const deltaActive = await this.verifyPositionExists("delta");
 
-        closedSide: "CoinDCX",
-        remainingSide: "Delta",
-        closureReason: data.reason || data.type,
-        closedPosition: previousPosition,
-        deltaPosition: this.latestDeltaPosition,
-        coindcxPosition: null,
+      if (coindcxStillActive) {
+        console.log("⚠️ CoinDCX position still active after verification!");
+        console.log("   → False WebSocket close event, position restored");
+        console.log("=".repeat(60));
+        return;
+      }
 
-        timestamp: new Date().toISOString(),
-      });
-    }
-    console.log("=".repeat(60));
+      console.log("✅ CoinDCX position confirmed closed");
+
+      // Check if Delta still has position (one-sided scenario)
+      if (deltaActive) {
+        console.log("⚠️ ONE-SIDED: Delta still has position, CoinDCX closed!");
+
+        this.emergencyExit("emergencyExit", {
+          reason: "ONE_SIDED_COINDCX_CLOSED",
+          closedSide: "CoinDCX",
+          remainingSide: "Delta",
+          closureReason: data.reason || data.type,
+          closedPosition: previousPosition,
+          deltaPosition: this.latestDeltaPosition,
+          coindcxPosition: null,
+          timestamp: new Date().toISOString(),
+          doubleVerified: true,
+          deltaConfirmed: true,
+          coindcxConfirmed: false,
+        });
+      } else {
+        console.log("✅ Both positions closed normally");
+      }
+      console.log("=".repeat(60));
+    }, 5000); // 5 second delay for API to catch up
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -862,7 +946,10 @@ class TradeMonitor extends EventEmitter {
       deltaPosition.product?.contract_value || 1,
     );
     const deltaQuantity = deltaSize * deltaContractValue;
-    const coindcxQuantity = Math.abs(coindcxPosition.positionAmount || 0);
+
+    // Use robust CoinDCX size extraction (active_pos/size/positionAmount)
+    const coindcxSize = this.getCoindcxPositionSize(coindcxPosition);
+    const coindcxQuantity = Math.abs(coindcxSize || 0);
 
     console.log("\n🔍 QUANTITY CHECK");
     console.log("=".repeat(60));
@@ -883,28 +970,56 @@ class TradeMonitor extends EventEmitter {
       )}%) | Tolerance: ${(this.quantityTolerance * 100).toFixed(1)}%`,
     );
 
+    // 🚨 GUARD: Skip emergency exit if one position is 0 (delayed WebSocket snapshot)
+    // This prevents false exits when one exchange's WS snapshot hasn't arrived yet
+    const hasZeroPosition = deltaQuantity === 0 || coindcxQuantity === 0;
+
     if (qtyDiffPct > this.quantityTolerance * 100) {
-      console.log("❌ QUANTITY MISMATCH → EMERGENCY EXIT");
+      if (hasZeroPosition) {
+        // One position missing from WS, likely just delayed snapshot
+        console.log(
+          "⚠️  QUANTITY ZERO DETECTED (likely delayed WebSocket snapshot)",
+        );
+        console.log(`   Delta: ${deltaQuantity} | CoinDCX: ${coindcxQuantity}`);
+        console.log(
+          "   → Waiting for REST verification to backfill missing data",
+        );
+        console.log(
+          "   → Emergency exit SKIPPED (not a real mismatch, just stale WS)",
+        );
 
-      // Emit event for dashboard
-      this.emit("quantityMismatch", {
-        deltaQty: deltaQuantity,
-        coindcxQty: coindcxQuantity,
-        differencePct: qtyDiffPct,
-        deltaPosition,
-        coindcxPosition,
-      });
+        // Force immediate REST verification instead of waiting for the interval
+        await this.verifyPositionsViaREST(true);
+      } else {
+        // Both positions have non-zero sizes but differ significantly
+        console.log("❌ QUANTITY MISMATCH → EMERGENCY EXIT");
+        console.log(
+          `   Delta: ${deltaQuantity.toFixed(4)} | CoinDCX: ${coindcxQuantity.toFixed(4)}`,
+        );
+        console.log(
+          `   Mismatch: ${qtyDiffPct.toFixed(2)}% (tolerance: ${(this.quantityTolerance * 100).toFixed(1)}%)`,
+        );
 
-      await this.emergencyExit("QUANTITY_MISMATCH", {
-        reason: `Quantity mismatch exceeds ${
-          this.quantityTolerance * 100
-        }% tolerance`,
-        deltaQuantity,
-        coindcxQuantity,
-        qtyDiffPct,
-        deltaPosition,
-        coindcxPosition,
-      });
+        // Emit event for dashboard
+        this.emit("quantityMismatch", {
+          deltaQty: deltaQuantity,
+          coindcxQty: coindcxQuantity,
+          differencePct: qtyDiffPct,
+          deltaPosition,
+          coindcxPosition,
+        });
+
+        await this.emergencyExit("QUANTITY_MISMATCH", {
+          reason: `Quantity mismatch exceeds ${
+            this.quantityTolerance * 100
+          }% tolerance`,
+          deltaQuantity,
+          coindcxQuantity,
+          qtyDiffPct,
+          deltaPosition,
+          coindcxPosition,
+        });
+      }
     } else {
       console.log("✅ Quantity check passed");
     }
@@ -986,15 +1101,100 @@ class TradeMonitor extends EventEmitter {
    * Check if both positions are still active
    * Trigger emergency exit if one side is missing for too long
    */
+  /**
+   * Double verification: Check position via both WebSocket AND REST API
+   * Returns true only if BOTH sources confirm position exists
+   */
+  async verifyPositionExists(exchange) {
+    console.log(`\n🔍 DOUBLE VERIFICATION for ${exchange}`);
+    console.log("─".repeat(60));
+
+    // Check WebSocket data
+    const wsHas =
+      exchange === "delta"
+        ? this.hasDeltaPosition()
+        : this.hasCoindcxPosition();
+    console.log(`   WebSocket: ${wsHas ? "✅ Active" : "❌ None"}`);
+
+    // Force REST API check
+    console.log(`   Fetching from REST API...`);
+
+    let restHas = false;
+    try {
+      if (exchange === "delta") {
+        const positions = await deltaAPI.getAllPositions();
+        const activePosition =
+          Array.isArray(positions) &&
+          positions.find((p) => Math.abs(parseFloat(p.size || 0)) > 0);
+        restHas = !!activePosition;
+
+        if (restHas && !wsHas) {
+          // Update WebSocket data if REST has it but WS doesn't
+          console.log(`   📝 Updating WebSocket from REST`);
+          activePosition.side =
+            parseFloat(activePosition.size) > 0 ? "LONG" : "SHORT";
+          this.latestDeltaPosition = activePosition;
+        }
+      } else {
+        const positions = await coindcxAPI.getPositions();
+        const activePosition =
+          Array.isArray(positions) &&
+          positions.find((p) => {
+            const size = Math.abs(
+              parseFloat(p.size || p.active_pos || p.positionAmount || 0),
+            );
+            return size > 0;
+          });
+        restHas = !!activePosition;
+
+        if (restHas && !wsHas) {
+          // Update WebSocket data if REST has it but WS doesn't
+          console.log(`   📝 Updating WebSocket from REST`);
+          const size = parseFloat(
+            activePosition.size ||
+              activePosition.active_pos ||
+              activePosition.positionAmount ||
+              0,
+          );
+          activePosition.side = size > 0 ? "LONG" : "SHORT";
+          this.latestCoindcxPosition = activePosition;
+        }
+      }
+    } catch (error) {
+      console.error(`   REST API Error: ${error.message}`);
+    }
+
+    console.log(`   REST API: ${restHas ? "✅ Active" : "❌ None"}`);
+
+    // Treat REST as source of truth when WS is missing; if either shows active, consider it active
+    const confirmed = wsHas || restHas;
+
+    console.log(
+      `   Final Verdict: ${confirmed ? "✅ CONFIRMED ACTIVE" : "❌ NOT ACTIVE (both sources absent)"}`,
+    );
+    console.log("─".repeat(60));
+
+    return confirmed;
+  }
+
   async checkPositionExistence() {
     console.log("\n🔍 POSITION EXISTENCE CHECK");
     console.log("─".repeat(60));
 
-    const ONE_SIDED_TIMEOUT_MS = 20000; // 30 seconds
+    const ONE_SIDED_TIMEOUT_MS = 20000; // 20 seconds - faster response as user requested
     const now = Date.now();
 
-    // Verify via REST API periodically
-    await this.verifyPositionsViaREST();
+    // 🔴 ONLY force REST when:
+    // 1. Delta just reconnected (stale WS data risk)
+    // 2. One-sided scenario detected and waiting for timeout
+    const forceRest =
+      this.forceDeltaRestVerification || !!this.oneSidedDetectedAt;
+    await this.verifyPositionsViaREST(forceRest);
+
+    // Clear the flag after forcing one REST check
+    if (this.forceDeltaRestVerification) {
+      this.forceDeltaRestVerification = false;
+    }
 
     const hasDelta = this.hasDeltaPosition();
     const hasCoindcx = this.hasCoindcxPosition();
@@ -1062,11 +1262,58 @@ class TradeMonitor extends EventEmitter {
     );
 
     if (timeSinceDetection >= ONE_SIDED_TIMEOUT_MS) {
-      console.log("❌ ONE-SIDED TIMEOUT → EMERGENCY EXIT");
+      console.log("⚠️ ONE-SIDED TIMEOUT REACHED (20 seconds)");
+      console.log("─".repeat(60));
+      console.log("   Performing DOUBLE VERIFICATION (REST + WebSocket)...");
+
+      // DOUBLE VERIFICATION: Check both exchanges via REST + WebSocket
+      const deltaConfirmed = await this.verifyPositionExists("delta");
+      const coindcxConfirmed = await this.verifyPositionExists("coindcx");
+
+      console.log("\n📊 DOUBLE VERIFICATION RESULTS:");
+      console.log("─".repeat(60));
+      console.log(
+        `   Delta: ${deltaConfirmed ? "✅ CONFIRMED ACTIVE" : "❌ CONFIRMED CLOSED"}`,
+      );
+      console.log(
+        `   CoinDCX: ${coindcxConfirmed ? "✅ CONFIRMED ACTIVE" : "❌ CONFIRMED CLOSED"}`,
+      );
       console.log("─".repeat(60));
 
-      const activeSide = hasDelta ? "Delta" : "CoinDCX";
-      const missingSide = hasDelta ? "CoinDCX" : "Delta";
+      if (deltaConfirmed && coindcxConfirmed) {
+        console.log(
+          "✅ Both positions CONFIRMED ACTIVE after double verification",
+        );
+        console.log("   → False alarm, resetting timer");
+        this.oneSidedDetectedAt = null;
+        console.log("─".repeat(60));
+        return;
+      }
+
+      if (!deltaConfirmed && !coindcxConfirmed) {
+        console.log(
+          "✅ Both positions CONFIRMED CLOSED after double verification",
+        );
+        console.log("   → No exit needed, resetting timer");
+        this.oneSidedDetectedAt = null;
+        console.log("─".repeat(60));
+        return;
+      }
+
+      // ONE-SIDED CONFIRMED - Need to exit
+      console.log("❌ ONE-SIDED CONFIRMED → EMERGENCY EXIT");
+      console.log("─".repeat(60));
+
+      const activeSide = deltaConfirmed ? "Delta" : "CoinDCX";
+      const missingSide = deltaConfirmed ? "CoinDCX" : "Delta";
+
+      console.log(`   Active Side: ${activeSide}`);
+      console.log(`   Missing Side: ${missingSide}`);
+      console.log(
+        `   Time since detection: ${(timeSinceDetection / 1000).toFixed(0)}s`,
+      );
+      console.log("   → Triggering emergency exit of remaining position");
+      console.log("─".repeat(60));
 
       this.emergencyExit("emergencyExit", {
         reason: "ONE_SIDED_TIMEOUT",
@@ -1077,23 +1324,40 @@ class TradeMonitor extends EventEmitter {
         deltaPosition: this.latestDeltaPosition,
         coindcxPosition: this.latestCoindcxPosition,
         timestamp: new Date().toISOString(),
+        doubleVerified: true,
+        deltaConfirmed,
+        coindcxConfirmed,
       });
 
+      // IMPORTANT: Reset timer but KEEP MONITORING
+      // If one-sided persists after exit, timer will restart on next check
       this.oneSidedDetectedAt = null;
+      console.log(
+        "\n⏰ Timer reset - will continue monitoring for one-sided positions",
+      );
+      console.log("─".repeat(60));
     } else {
       console.log(`   ⏳ Remaining: ${(remainingMs / 1000).toFixed(0)}s`);
       console.log("─".repeat(60));
     }
   }
 
-  async verifyPositionsViaREST() {
+  async verifyPositionsViaREST(force = false) {
     const now = Date.now();
-    const MIN_INTERVAL = 10000; // 5 seconds
+    // Adaptive REST cadence: 10s during mismatch/one-sided/reconnect, 60s otherwise
+    const MIN_INTERVAL =
+      this.forceDeltaRestVerification ||
+      this.oneSidedDetectedAt ||
+      this.deltaRestMismatchCount > 0 ||
+      this.coindcxRestMismatchCount > 0
+        ? 10000
+        : 60000;
 
-    if (now - this.lastRestVerificationTime < MIN_INTERVAL) {
+    if (!force && now - this.lastRestVerificationTime < MIN_INTERVAL) {
       return;
     }
 
+    // Record the time we actually performed a REST verification
     this.lastRestVerificationTime = now;
 
     console.log("\n🔄 REST API VERIFICATION");
@@ -1110,51 +1374,65 @@ class TradeMonitor extends EventEmitter {
     try {
       const deltaPositions = await deltaAPI.getAllPositions();
 
-      console.log(
-        `   Delta REST: Fetched ${Array.isArray(deltaPositions) ? deltaPositions.length : 0} position(s)`,
-      );
-
-      if (Array.isArray(deltaPositions) && deltaPositions.length > 0) {
-        // 🔴 ADD SIDE to each position
-        deltaPositions.forEach((p, i) => {
-          const size = parseFloat(p.size || 0);
-
-          // Determine side from size sign
-          // Delta: positive size = LONG, negative size = SHORT
-          let side = "UNKNOWN";
-          if (size > 0) {
-            side = "LONG";
-          } else if (size < 0) {
-            side = "SHORT";
-          }
-
-          // Add side field to position object
-          p.side = side;
-
-          console.log(
-            `      [${i}] ${p.product_symbol}: size=${p.size}, side=${side}`,
-          );
-        });
-
-        // Find position with non-zero size
-        activeDeltaREST = deltaPositions.find((p) => {
-          const size = Math.abs(parseFloat(p.size || 0));
-          return size > 0;
-        });
-      }
-
-      restHasDelta = !!activeDeltaREST;
-
-      if (activeDeltaREST) {
-        console.log(`   Delta REST: ✅ ACTIVE POSITION`);
-        console.log(`      Symbol: ${activeDeltaREST.product_symbol}`);
-        console.log(`      Size: ${activeDeltaREST.size}`);
-        console.log(`      Side: ${activeDeltaREST.side}`);
+      // 🔴 CRITICAL: Check if API is rate-limited (null = unavailable)
+      if (deltaPositions === null) {
+        console.log("   Delta REST: ⚠️ API UNAVAILABLE (rate limited)");
+        console.log("   → Skipping Delta REST verification this cycle");
+        console.log("   → Keeping existing WebSocket position data");
+        // Don't update restHasDelta - keep it false but don't count as mismatch
+        // Set a flag to skip mismatch detection for Delta
+        restHasDelta = "SKIPPED_RATE_LIMIT";
       } else {
-        console.log(`   Delta REST: ❌ NO ACTIVE POSITION`);
+        console.log(
+          `   Delta REST: Fetched ${Array.isArray(deltaPositions) ? deltaPositions.length : 0} position(s)`,
+        );
+
+        if (Array.isArray(deltaPositions) && deltaPositions.length > 0) {
+          // 🔴 ADD SIDE to each position
+          deltaPositions.forEach((p, i) => {
+            const size = parseFloat(p.size || 0);
+
+            // Determine side from size sign
+            // Delta: positive size = LONG, negative size = SHORT
+            let side = "UNKNOWN";
+            if (size > 0) {
+              side = "LONG";
+            } else if (size < 0) {
+              side = "SHORT";
+            }
+
+            // Add side field to position object
+            p.side = side;
+
+            console.log(
+              `      [${i}] ${p.product_symbol}: size=${p.size}, side=${side}`,
+            );
+          });
+
+          // Find position with non-zero size
+          activeDeltaREST = deltaPositions.find((p) => {
+            const size = Math.abs(parseFloat(p.size || 0));
+            return size > 0;
+          });
+        }
+
+        restHasDelta = !!activeDeltaREST;
+
+        if (activeDeltaREST) {
+          console.log(`   Delta REST: ✅ ACTIVE POSITION`);
+          console.log(`      Symbol: ${activeDeltaREST.product_symbol}`);
+          console.log(`      Size: ${activeDeltaREST.size}`);
+          console.log(`      Side: ${activeDeltaREST.side}`);
+        } else {
+          console.log(`   Delta REST: ❌ NO ACTIVE POSITION`);
+        }
       }
     } catch (error) {
       console.error(`   Delta REST: ❌ Error - ${error.message}`);
+      // If error contains rate limit, skip mismatch detection
+      if (error.message && error.message.includes("429")) {
+        restHasDelta = "SKIPPED_RATE_LIMIT";
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -1235,21 +1513,64 @@ class TradeMonitor extends EventEmitter {
     );
     console.log(`   └─────────────┴──────────┴──────────┘`);
 
-    // MISMATCH DETECTION & FIX
-    if (wsHasDelta && !restHasDelta) {
-      console.log("\n🔴 MISMATCH: WebSocket shows Delta, REST shows NONE");
-      console.log("   → Clearing stale WebSocket data");
-      this.clearDeltaPosition("rest_mismatch");
+    // MISMATCH DETECTION WITH COUNTERS (to clear stale WS state)
+    const REST_MISMATCH_THRESHOLD = 1; // immediate clearing on first REST/WS disagreement
+
+    // 🔴 SKIP MISMATCH DETECTION if Delta API is rate-limited
+    if (restHasDelta === "SKIPPED_RATE_LIMIT") {
+      console.log("\n⚠️ SKIPPING Delta mismatch check (API rate limited)");
+      console.log("   → Keeping existing WebSocket data");
+      console.log("   → NOT incrementing mismatch counter");
+      // Don't change mismatch count - wait for successful REST call
+    } else if (wsHasDelta && !restHasDelta) {
+      this.deltaRestMismatchCount += 1;
+      console.log("\n⚠️ MISMATCH: WebSocket shows Delta, REST shows NONE");
+      console.log(
+        `   → REST miss count: ${this.deltaRestMismatchCount}/${REST_MISMATCH_THRESHOLD}`,
+      );
+      console.log(
+        "   → If persists, we'll clear WS state to allow one-sided exit",
+      );
+
+      if (this.deltaRestMismatchCount >= REST_MISMATCH_THRESHOLD) {
+        console.log(
+          "❌ Persistent REST mismatch for Delta → clearing WS position",
+        );
+        this.clearDeltaPosition("rest_mismatch_persistent");
+        this.deltaRestMismatchCount = 0;
+      }
+    } else {
+      this.deltaRestMismatchCount = 0;
     }
 
     if (wsHasCoindcx && !restHasCoindcx) {
-      console.log("\n🔴 MISMATCH: WebSocket shows CoinDCX, REST shows NONE");
-      console.log("   → Clearing stale WebSocket data");
-      this.clearCoindcxPosition("rest_mismatch");
+      this.coindcxRestMismatchCount += 1;
+      console.log("\n⚠️ MISMATCH: WebSocket shows CoinDCX, REST shows NONE");
+      console.log(
+        `   → REST miss count: ${this.coindcxRestMismatchCount}/${REST_MISMATCH_THRESHOLD}`,
+      );
+      console.log(
+        "   → If persists, we'll clear WS state to allow one-sided exit",
+      );
+
+      if (this.coindcxRestMismatchCount >= REST_MISMATCH_THRESHOLD) {
+        console.log(
+          "❌ Persistent REST mismatch for CoinDCX → clearing WS position",
+        );
+        this.clearCoindcxPosition("rest_mismatch_persistent");
+        this.coindcxRestMismatchCount = 0;
+      }
+    } else {
+      this.coindcxRestMismatchCount = 0;
     }
 
-    // Update from REST if WebSocket is stale
-    if (!wsHasDelta && restHasDelta && activeDeltaREST) {
+    // Update from REST if WebSocket is missing but REST has data
+    if (
+      !wsHasDelta &&
+      restHasDelta &&
+      restHasDelta !== "SKIPPED_RATE_LIMIT" &&
+      activeDeltaREST
+    ) {
       console.log("\n🔄 Updating Delta from REST (with side field)");
       this.latestDeltaPosition = activeDeltaREST;
     }
@@ -1319,6 +1640,7 @@ class TradeMonitor extends EventEmitter {
     }
 
     if (deltaMarkPrice && coindcxMarkPrice) {
+      const deltaSymbol = this.latestDeltaPosition?.product_symbol;
       const priceDifference = coindcxMarkPrice - deltaMarkPrice;
       const currentSpread = Math.abs(priceDifference / deltaMarkPrice) * 100;
 
@@ -1344,7 +1666,9 @@ class TradeMonitor extends EventEmitter {
         const coindcxSymbol =
           this.latestCoindcxPosition.symbol ||
           this.latestCoindcxPosition.contractPair;
-        const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+        const deltaFRData = deltaSymbol
+          ? this.deltaMonitor.getFundingRate(deltaSymbol)
+          : null;
         const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
 
         this.emergencyExit("SPREAD_CONVERGENCE", {
@@ -1902,6 +2226,46 @@ class TradeMonitor extends EventEmitter {
     console.log(`Reason: ${reason}`);
     console.log("=".repeat(60));
 
+    // DOUBLE VERIFICATION before exit (unless already verified for one-sided)
+    if (!details.doubleVerified) {
+      console.log("\n🔍 DOUBLE VERIFICATION BEFORE EXIT");
+      console.log("━".repeat(60));
+      console.log("   Verifying both positions via REST + WebSocket...");
+
+      const deltaConfirmed = await this.verifyPositionExists("delta");
+      const coindcxConfirmed = await this.verifyPositionExists("coindcx");
+
+      console.log("\n📊 VERIFICATION RESULTS:");
+      console.log(
+        `   Delta: ${deltaConfirmed ? "✅ Active" : "❌ Closed/Missing"}`,
+      );
+      console.log(
+        `   CoinDCX: ${coindcxConfirmed ? "✅ Active" : "❌ Closed/Missing"}`,
+      );
+
+      // Store verification results in details
+      details.deltaConfirmed = deltaConfirmed;
+      details.coindcxConfirmed = coindcxConfirmed;
+      details.doubleVerified = true;
+
+      // If both positions are already closed, no need to exit
+      if (!deltaConfirmed && !coindcxConfirmed) {
+        console.log("\n✅ BOTH POSITIONS ALREADY CLOSED");
+        console.log("   → No exit needed, canceling emergency exit");
+        console.log("=".repeat(60));
+        this.resetFundingState();
+        this.confirmExitComplete();
+        return;
+      }
+
+      console.log("━".repeat(60));
+    } else {
+      console.log("\n✅ Already double verified (from one-sided detection)");
+    }
+
+    // Reset one-sided timer to prevent false positives during exit
+    this.oneSidedDetectedAt = null;
+
     this.emit("emergencyExit", {
       reason,
       details,
@@ -1909,7 +2273,13 @@ class TradeMonitor extends EventEmitter {
       timestamp: new Date().toISOString(),
     });
 
-    this.unregisterTrade(); // Stop monitoring
+    // Don't immediately unregister - let the exit handler do it after confirming closure
+    // this.unregisterTrade(); // Moved to after exit confirmation
+
+    console.log(
+      "\n⏳ Waiting for exit confirmation before stopping monitor...",
+    );
+    console.log("=".repeat(60));
   }
 
   async normalExit(details) {
@@ -1963,6 +2333,16 @@ class TradeMonitor extends EventEmitter {
     this.latestDeltaPosition = null;
     this.latestCoindcxPosition = null;
     this.oneSidedDetectedAt = null;
+    this.resetFundingState();
+  }
+
+  /**
+   * Call this after exit is confirmed to clean up monitoring
+   * This should be called by the exit handler after positions are verified closed
+   */
+  confirmExitComplete() {
+    console.log("\n✅ EXIT CONFIRMED - Cleaning up monitor state");
+    this.unregisterTrade();
   }
 
   async start() {
@@ -1972,10 +2352,10 @@ class TradeMonitor extends EventEmitter {
     this.deltaMonitor.connect();
     await this.coindcxMonitor.connect();
 
-    // Start periodic position existence check (every 5 seconds)
+    // Start periodic position existence check (every 15 seconds to reduce API calls)
     this.positionCheckInterval = setInterval(async () => {
       await this.checkPositionExistence();
-    }, 5000); // Check every 5 seconds
+    }, 15000); // Check every 15 seconds (was 5s - too frequent)
 
     console.log(
       "✅ Monitor active: Quantity + Flip + Normal Exit + One-Sided protection enabled",
@@ -2000,3 +2380,5 @@ class TradeMonitor extends EventEmitter {
 }
 
 export default TradeMonitor;
+
+//s

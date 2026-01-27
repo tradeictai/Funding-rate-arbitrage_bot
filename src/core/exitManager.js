@@ -10,7 +10,7 @@ import positionSizer from "./positionSizer.js";
  * Handles both normal exits (after funding) and emergency exits
  */
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class ExitManager {
   constructor() {
@@ -103,10 +103,10 @@ class ExitManager {
 
       console.log("\n📊 Funding Credit Check:");
       console.log(
-        `   Delta: ${deltaCredit.credited ? "✅ Credited" : "⏳ Waiting..."}`
+        `   Delta: ${deltaCredit.credited ? "✅ Credited" : "⏳ Waiting..."}`,
       );
       console.log(
-        `   Pi42:  ${pi42Credit.credited ? "✅ Credited" : "⏳ Waiting..."}`
+        `   Pi42:  ${pi42Credit.credited ? "✅ Credited" : "⏳ Waiting..."}`,
       );
 
       // If both credited, return success
@@ -127,8 +127,8 @@ class ExitManager {
       const remaining = (endTime - Date.now()) / 1000;
       console.log(
         `   Elapsed: ${elapsed.toFixed(0)}s | Remaining: ${remaining.toFixed(
-          0
-        )}s`
+          0,
+        )}s`,
       );
     }
 
@@ -144,22 +144,25 @@ class ExitManager {
   }
 
   /**
-   * Execute limit exit on Delta with retry logic
+   * Execute market exit on Delta with retry logic
    * @param {Object} position - Position to close
-   * @param {number} exitPrice - Exit price
+   * @param {number} exitPrice - Exit price (ignored, always uses market)
    * @returns {Promise<Object>} - Exit order result
    */
   async exitDeltaPosition(position, exitPrice = null) {
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        console.log(`\n📤 Exiting Delta position (Attempt ${attempt}/${this.maxRetries}):`);
+        console.log(
+          `\n📤 Exiting Delta position (Attempt ${attempt}/${this.maxRetries}):`,
+        );
         console.log("Position details:", position);
 
         const size = Math.abs(position.details.deltaPosition.size);
-        const side = position.details.deltaPosition.side === "LONG" ? "sell" : "buy"; // Opposite side to close
+        const side =
+          position.details.deltaPosition.side === "LONG" ? "sell" : "buy"; // Opposite side to close
 
-        // Use market order if no exit price specified
-        const orderType = exitPrice ? "limit_order" : "market_order";
+        // ALWAYS use market order to avoid open order issues
+        const orderType = "market_order";
 
         const orderParams = {
           productId: position.details.deltaPosition.product_id,
@@ -167,15 +170,18 @@ class ExitManager {
           side: side,
           orderType: orderType,
           size: size,
-          limitPrice: exitPrice,
+          limitPrice: null, // No price for market order
           postOnly: false,
           reduceOnly: true, // Important: reduce only to close position
         };
 
-        console.log("   Order type:", orderType);
+        console.log(
+          "   Order type:",
+          orderType,
+          "(market order - immediate execution)",
+        );
         console.log("   Side:", side);
         console.log("   Size:", size);
-        if (exitPrice) console.log("   Exit price:", exitPrice);
 
         const result = await deltaAPI.placeOrder(orderParams);
 
@@ -192,18 +198,22 @@ class ExitManager {
           exitPrice: exitPrice,
           result: result,
         };
-
       } catch (error) {
-        console.error(`❌ Delta exit attempt ${attempt}/${this.maxRetries} failed:`, error.message);
+        console.error(
+          `❌ Delta exit attempt ${attempt}/${this.maxRetries} failed:`,
+          error.message,
+        );
 
         // If this is the last attempt, return failure
         if (attempt >= this.maxRetries) {
-          console.error(`❌ All ${this.maxRetries} attempts failed for Delta exit`);
+          console.error(
+            `❌ All ${this.maxRetries} attempts failed for Delta exit`,
+          );
           return {
             success: false,
             exchange: "delta",
             error: error.message,
-            attempts: attempt
+            attempts: attempt,
           };
         }
 
@@ -220,7 +230,9 @@ class ExitManager {
 
           // Step 2: Cancel all open orders if any exist
           if (openOrders && openOrders.length > 0) {
-            console.log(`   Step 2: Found ${openOrders.length} open orders, canceling all...`);
+            console.log(
+              `   Step 2: Found ${openOrders.length} open orders, canceling all...`,
+            );
             await deltaAPI.cancelAllOrders();
             console.log(`   ✅ All open orders canceled`);
             await sleep(2000); // Wait for cancellation to complete
@@ -228,30 +240,12 @@ class ExitManager {
             console.log(`   Step 2: No open orders found`);
           }
 
-          // Step 3: Recalculate price from fresh orderbook (only for limit orders)
-          if (orderType === 'limit_order') {
-            console.log(`   Step 3: Recalculating exit price from fresh orderbook...`);
+          // Step 3: Market orders don't need price recalculation
+          console.log(
+            `   Step 3: Using market order - no price recalculation needed`,
+          );
 
-            const orderbookRaw = await deltaAPI.getOrderbook(symbol, this.orderbookDepth);
-            const orderbook = positionSizer.normalizeOrderbook(orderbookRaw, 'delta');
-
-            const deltaSide = position.details.deltaPosition.side === 'LONG' ? 'sell' : 'buy';
-            const usdQuantity = position.details.deltaPosition.size * position.details.deltaPosition.product.contract_value;
-
-            const result = positionSizer.calculateTradingPriceFromOrderbook(
-              orderbook,
-              deltaSide,
-              usdQuantity
-            );
-
-            exitPrice = result.tradingPrice;
-            console.log(`   ✅ New exit price calculated: ${exitPrice}`);
-          } else {
-            console.log(`   Step 3: Skipping price recalculation (market order)`);
-          }
-
-          console.log(`   Retrying exit with updated parameters...`);
-
+          console.log(`   Retrying exit with market order...`);
         } catch (retryError) {
           console.error(`   ❌ Retry preparation failed:`, retryError.message);
           // Continue to next attempt even if retry preparation fails
@@ -403,7 +397,6 @@ class ExitManager {
   //   }
   // }
 
-
   async exitCoinDCXPosition(position, exitPrice = null) {
     console.log("postions: ", position);
     try {
@@ -418,12 +411,12 @@ class ExitManager {
       }
 
       const leverage = Number(position.details.coindcxPosition.leverage) || 10;
-      // If exitPrice provided, use limit order for partial/full close (opposite side)
+      // Always use market order for immediate execution
 
       const size = Math.abs(
         position.details.coindcxPosition.active_pos ||
-        position.details.coindcxPosition.size ||
-        0
+          position.details.coindcxPosition.size ||
+          0,
       );
       const sideToClose =
         position.details.coindcxPosition.side === "SHORT" ? "buy" : "sell"; // Opposite
@@ -444,11 +437,9 @@ class ExitManager {
         },
       };
 
-
-
       const result = await coindcxAPI.placeOrder(orderParams);
 
-      console.log("✅ CoinDCX limit exit order placed");
+      console.log("✅ CoinDCX market exit order placed");
 
       return {
         success: true,
@@ -457,11 +448,10 @@ class ExitManager {
         symbol: pair,
         side: sideToClose,
         quantity: size,
-        orderType: "limit",
+        orderType: "market",
         // exitPrice,
         result,
       };
-
 
       // Market full close via Exit endpoint
       // console.log(`   Using Market Exit for full position close`);
@@ -497,7 +487,7 @@ class ExitManager {
     }
   }
   /**
-   * Normal exit after funding credit (limit orders)
+   * Normal exit after funding credit (market orders)
    * @param {Object} trade - Active trade object
    * @param {Object} deltaPosition - Delta position
    * @param {Object} pi42Position - Pi42 position
@@ -523,8 +513,8 @@ class ExitManager {
       //   });
       // }
 
-      // Funding credited, proceed with limit exits
-      console.log("\n📊 Executing limit exits on both exchanges...");
+      // Funding credited, proceed with market exits
+      console.log("\n📊 Executing market exits on both exchanges...");
 
       // Calculate exit prices (could use current market price or a slight improvement)
       // const deltaExitPrice = deltaPosition.mark_price; // Could add spread for better execution
@@ -580,7 +570,7 @@ class ExitManager {
         {
           reason: "Normal exit error",
           error: error.message,
-        }
+        },
       );
     }
   }
@@ -605,16 +595,20 @@ class ExitManager {
       console.log("\n📊 Placing exit orders...");
 
       // Check which positions exist
-      const hasDeltaPosition = trade.details?.deltaPosition?.size &&
+      const hasDeltaPosition =
+        trade.details?.deltaPosition?.size &&
         Math.abs(trade.details.deltaPosition.size) > 0;
-      const hasCoindcxPosition = trade.details?.coindcxPosition?.size &&
+      const hasCoindcxPosition =
+        trade.details?.coindcxPosition?.size &&
         Math.abs(trade.details.coindcxPosition.size) > 0;
 
-      console.log(`   Delta Position: ${hasDeltaPosition ? 'Active' : 'None'}`);
-      console.log(`   CoinDCX Position: ${hasCoindcxPosition ? 'Active' : 'None'}`);
+      console.log(`   Delta Position: ${hasDeltaPosition ? "Active" : "None"}`);
+      console.log(
+        `   CoinDCX Position: ${hasCoindcxPosition ? "Active" : "None"}`,
+      );
 
-      let deltaExit = { success: true, message: 'No position to exit' };
-      let coindcxExit = { success: true, message: 'No position to exit' };
+      let deltaExit = { success: true, message: "No position to exit" };
+      let coindcxExit = { success: true, message: "No position to exit" };
 
       // Exit Delta if position exists
       if (hasDeltaPosition) {
@@ -625,17 +619,23 @@ class ExitManager {
 
       // Exit CoinDCX if position exists
       if (hasCoindcxPosition) {
-        coindcxExit = await this.exitCoinDCXPosition(trade, trade.coindcxPosition);
+        coindcxExit = await this.exitCoinDCXPosition(
+          trade,
+          trade.coindcxPosition,
+        );
       } else {
         console.log("   ⏭️ Skipping CoinDCX exit (no position)");
       }
 
       // Check if any actual exit failed
-      const hadFailure = (hasDeltaPosition && !deltaExit.success) ||
+      const hadFailure =
+        (hasDeltaPosition && !deltaExit.success) ||
         (hasCoindcxPosition && !coindcxExit.success);
 
       if (hadFailure) {
-        console.error("\n❌ CRITICAL: One or more emergency exit orders failed:");
+        console.error(
+          "\n❌ CRITICAL: One or more emergency exit orders failed:",
+        );
         if (hasDeltaPosition && !deltaExit.success)
           console.error(`   Delta: ${deltaExit.error}`);
         if (hasCoindcxPosition && !coindcxExit.success)
@@ -702,7 +702,7 @@ class ExitManager {
         trade,
         deltaPosition,
         pi42Position,
-        reason
+        reason,
       );
     }
   }
