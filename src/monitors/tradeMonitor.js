@@ -1655,7 +1655,8 @@ class TradeMonitor extends EventEmitter {
 
       const EXIT_SPREAD_TARGET = 0.03; // 0.02%
 
-      if (false) { // DISABLED: Spread convergence exit
+      if (false) {
+        // DISABLED: Spread convergence exit
         console.log(`\n✅ SPREAD CONVERGENCE DETECTED (After Funding)!`);
         console.log(`   Target: ≤ ${EXIT_SPREAD_TARGET}%`);
         console.log(`   Actual: ${currentSpread.toFixed(4)}%`);
@@ -1669,7 +1670,9 @@ class TradeMonitor extends EventEmitter {
 
         // Safety check: ensure symbols exist before getting funding rates
         if (!coindcxSymbol) {
-          console.warn('⚠️ coindcxSymbol is undefined, skipping funding rate lookup');
+          console.warn(
+            "⚠️ coindcxSymbol is undefined, skipping funding rate lookup",
+          );
           return;
         }
 
