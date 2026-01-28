@@ -399,7 +399,7 @@ class TradeMonitor extends EventEmitter {
    * 4. Compare Mark Price with Exit Threshold Price
    * 5. If crossed → EXIT!
    */
-  checkPreLiquidation() {
+  async checkPreLiquidation() {
     if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return false;
 
     // 🔴 30% buffer rakhna hai liquidation se pehle
@@ -576,6 +576,25 @@ class TradeMonitor extends EventEmitter {
       console.log(`   📍 ACTION: EXIT to avoid liquidation & fees`);
       console.log("   " + "=".repeat(60));
 
+      // DOUBLE VERIFICATION before exit (same as one-sided exit)
+      console.log("\n🔄 DOUBLE VERIFICATION BEFORE LIQUIDATION EXIT...");
+      console.log("─".repeat(60));
+      const deltaConfirmed = await this.verifyPositionExists("delta");
+      const coindcxConfirmed = await this.verifyPositionExists("coindcx");
+
+      console.log("📊 VERIFICATION RESULTS:");
+      console.log(`   Delta: ${deltaConfirmed ? "✅ Active" : "❌ Closed"}`);
+      console.log(
+        `   CoinDCX: ${coindcxConfirmed ? "✅ Active" : "❌ Closed"}`,
+      );
+      console.log("─".repeat(60));
+
+      if (!deltaConfirmed && !coindcxConfirmed) {
+        console.log("✅ Both positions already closed - no exit needed");
+        this.resetFundingState();
+        return true;
+      }
+
       this.emergencyExit("emergencyExit", {
         reason: "LIQUIDATION_PROTECTION",
         triggeringSide,
@@ -603,10 +622,13 @@ class TradeMonitor extends EventEmitter {
         coindcxSide: coindcxResult.side,
         coindcxShouldExit: coindcxResult.shouldExit,
 
-        // Positions
+        // Positions (use latest verified data)
         deltaPosition: this.latestDeltaPosition,
         coindcxPosition: this.latestCoindcxPosition,
         timestamp: new Date().toISOString(),
+        doubleVerified: true,
+        deltaConfirmed,
+        coindcxConfirmed,
       });
 
       this.resetFundingState();
