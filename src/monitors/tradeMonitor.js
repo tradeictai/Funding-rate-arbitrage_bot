@@ -53,6 +53,7 @@ class TradeMonitor extends EventEmitter {
     this.coindcxRestMismatchCount = 0;
     this.forceDeltaRestVerification = false; // Flag to force REST check after Delta reconnect
     this.lastPositionExistenceCheck = 0; // Throttle position existence checks
+    this.exitInProgress = false; // 🔒 Flag to prevent multiple exit triggers
 
     this.setupEventHandlers();
   }
@@ -400,6 +401,12 @@ class TradeMonitor extends EventEmitter {
    * 5. If crossed → EXIT!
    */
   async checkPreLiquidation() {
+    // 🔒 PREVENT MULTIPLE EXIT TRIGGERS
+    if (this.exitInProgress) {
+      console.log("⏳ Exit already in progress - skipping liquidation check");
+      return false;
+    }
+
     if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return false;
 
     // 🔴 30% buffer rakhna hai liquidation se pehle
@@ -594,6 +601,10 @@ class TradeMonitor extends EventEmitter {
         this.resetFundingState();
         return true;
       }
+
+      // 🔒 SET FLAG TO PREVENT MULTIPLE TRIGGERS
+      this.exitInProgress = true;
+      console.log("🔒 Exit lock acquired - preventing duplicate triggers");
 
       this.emergencyExit("emergencyExit", {
         reason: "LIQUIDATION_PROTECTION",
@@ -2365,6 +2376,7 @@ class TradeMonitor extends EventEmitter {
     this.latestDeltaPosition = null;
     this.latestCoindcxPosition = null;
     this.oneSidedDetectedAt = null;
+    this.exitInProgress = false; // 🔓 Reset exit lock
     this.resetFundingState();
   }
 
@@ -2374,6 +2386,8 @@ class TradeMonitor extends EventEmitter {
    */
   confirmExitComplete() {
     console.log("\n✅ EXIT CONFIRMED - Cleaning up monitor state");
+    this.exitInProgress = false; // 🔓 Release exit lock
+    console.log("🔓 Exit lock released - ready for new operations");
     this.unregisterTrade();
   }
 
