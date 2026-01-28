@@ -374,6 +374,10 @@ class CoinDCXPositionMonitor extends EventEmitter {
   }
 
   getFundingRate(symbol) {
+    if (!symbol) {
+      console.warn('⚠️ getFundingRate called with undefined symbol');
+      return null;
+    }
     return this.fundingRates.get(symbol.toUpperCase());
   }
 

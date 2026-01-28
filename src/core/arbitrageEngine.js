@@ -1229,10 +1229,15 @@ class ArbitrageEngine extends EventEmitter {
         exitData.details.deltaPosition.size &&
         Math.abs(exitData.details.deltaPosition.size) > 0;
 
+      // Properly extract CoinDCX size from any of the possible fields
+      const coindcxSize = exitData.details?.coindcxPosition ?
+        (exitData.details.coindcxPosition.active_pos ||
+         exitData.details.coindcxPosition.size ||
+         exitData.details.coindcxPosition.positionAmount || 0) : 0;
+
       const hasCoindcxPosition =
         exitData.details?.coindcxPosition &&
-        exitData.details.coindcxPosition.size &&
-        Math.abs(exitData.details.coindcxPosition.size) > 0;
+        Math.abs(coindcxSize) > 0;
 
       console.log("\n📊 POSITION STATUS:");
       console.log(
