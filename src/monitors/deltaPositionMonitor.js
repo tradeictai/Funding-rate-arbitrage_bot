@@ -2,7 +2,10 @@ import crypto from "crypto";
 import WebSocket from "ws";
 import EventEmitter from "events";
 import axios from "axios";
+import https from "https";
 import config from "../config/config.js";
+
+const httpsAgent = new https.Agent({ family: 4 });
 
 /**
  * Delta Position + Funding Rate Monitor
@@ -173,6 +176,7 @@ class DeltaPositionMonitor extends EventEmitter {
         const beforeRequest = Date.now();
 
         const response = await axios.get(`${this.restBaseUrl}${endpoint}`, {
+          httpsAgent,
           timeout: 3000,
         });
 
@@ -277,7 +281,9 @@ class DeltaPositionMonitor extends EventEmitter {
     console.log("🚀 Starting Delta Position + Funding Monitor");
     console.log("=".repeat(60));
 
-    this.ws = new WebSocket(this.socketUrl);
+    this.ws = new WebSocket(this.socketUrl, {
+      family: 4,
+    });
 
     this.ws.on("open", async () => {
       console.log("✅ Connected to Delta WebSocket\n");

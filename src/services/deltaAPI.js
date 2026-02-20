@@ -1,5 +1,9 @@
 import crypto from "crypto";
 import config from "../config/config.js";
+import axios from "axios";
+import https from "https";
+
+const httpsAgent = new https.Agent({ family: 4 });
 
 /**
  * Delta Exchange REST API Client
@@ -72,18 +76,14 @@ class DeltaAPI {
       };
     }
 
-    const options = {
-      method,
-      headers,
-    };
+    const requestMethod = method.toUpperCase();
+    const requestUrl = `${this.baseUrl}${endpoint}`;
 
-    if (body && (method === "POST" || method === "PUT")) {
+    if (body && (requestMethod === "POST" || requestMethod === "PUT")) {
       const bodyString = JSON.stringify(body);
-      options.body = bodyString;
 
       if (!isPublicProducts) {
-        // Only log body for authenticated requests
-        console.log(`📤 Delta ${method} ${endpoint}:`, {
+        console.log(`📤 Delta ${requestMethod} ${endpoint}:`, {
           body: JSON.parse(bodyString),
           headers: {
             "api-key": headers["api-key"]
@@ -99,14 +99,24 @@ class DeltaAPI {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, options);
-      const data = await response.json();
+      const response = await axios({
+        method: requestMethod,
+        url: requestUrl,
+        headers,
+        data:
+          body && (requestMethod === "POST" || requestMethod === "PUT")
+            ? body
+            : undefined,
+        httpsAgent,
+        validateStatus: () => true,
+      });
+      const data = response.data;
 
       console.log(
-        `Delta API ${method} ${endpoint} - Status: ${response.status}`,
+        `Delta API ${requestMethod} ${endpoint} - Status: ${response.status}`,
       );
 
-      if (!response.ok) {
+      if (response.status < 200 || response.status >= 300) {
         let errorMsg = "";
         if (
           data?.error?.code === "bad_schema" &&

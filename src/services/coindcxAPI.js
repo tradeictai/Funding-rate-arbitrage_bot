@@ -1,6 +1,9 @@
 import crypto from "crypto";
 import config from "../config/config.js";
 import axios from "axios";
+import https from "https";
+
+const httpsAgent = new https.Agent({ family: 4 });
 
 /**
  * CoinDCX Futures REST API Client
@@ -14,12 +17,24 @@ class CoinDCXAPI {
   constructor() {
     this.baseUrl = "https://api.coindcx.com";
     this.publicUrl = "https://public.coindcx.com";
-    this.apiKey = config.orderPlace.coindcx.apiKey;
-    this.apiSecret = config.orderPlace.coindcx.apiSecret;
+    // Keys are always read fresh via refreshCredentials() — never cached at startup
+    this.apiKey = "";
+    this.apiSecret = "";
+    this.apiKeyTrade = "";
+    this.apiSecretTrade = "";
+  }
 
-    // If you have separate trade keys, add them here
-    this.apiKeyTrade = config.orderPlace.coindcx.apiKey;
-    this.apiSecretTrade = config.orderPlace.coindcx.apiSecret;
+  /**
+   * Read latest credentials from runtime config on every authenticated call.
+   * Necessary because config is loaded from DB after module import.
+   */
+  refreshCredentials() {
+    const key = (config.orderPlace?.coindcx?.apiKey || "").trim();
+    const secret = (config.orderPlace?.coindcx?.apiSecret || "").trim();
+    this.apiKey = key;
+    this.apiSecret = secret;
+    this.apiKeyTrade = key;
+    this.apiSecretTrade = secret;
   }
 
   /**
@@ -65,10 +80,19 @@ class CoinDCXAPI {
     endpoint,
     params = {},
     useTradeCreds = false,
-    useBufferFormat = false
+    useBufferFormat = false,
   ) {
+    // Always pull latest credentials from runtime config
+    this.refreshCredentials();
+
     const apiSecret = useTradeCreds ? this.apiSecretTrade : this.apiSecret;
     const apiKey = useTradeCreds ? this.apiKeyTrade : this.apiKey;
+
+    if (!apiKey || !apiSecret) {
+      throw new Error(
+        "CoinDCX credentials missing — set COINDCX_API_KEY and COINDCX_API_SECRET in .env",
+      );
+    }
 
     // Temporarily set apiSecret for generateAuth
     const originalSecret = this.apiSecret;
@@ -76,7 +100,7 @@ class CoinDCXAPI {
 
     const { payload, signature, fullBody } = this.generateAuth(
       params,
-      useBufferFormat
+      useBufferFormat,
     );
 
     // Restore original secret
@@ -88,50 +112,41 @@ class CoinDCXAPI {
       "X-AUTH-SIGNATURE": signature,
     };
 
+    const requestMethod = String(method || "POST").toUpperCase();
     const url = `${this.baseUrl}${endpoint}`;
 
-    console.log(`📤 CoinDCX ${method} ${endpoint}`);
+    console.log(`📤 CoinDCX ${requestMethod} ${endpoint}`);
     console.log("Payload:", payload);
     console.log("Signature:", signature.substring(0, 16) + "...");
 
-    let response;
-    let data;
-
     try {
-      if (method === "GET") {
-        // For GET requests with body (like futures wallet endpoint), use axios
-        // fetch() doesn't support GET requests with a body
-        const axiosResponse = await axios({
-          method: "GET",
-          url: url,
-          headers: headers,
-          data: fullBody, // Body for GET request (axios supports this, fetch doesn't)
-          validateStatus: () => true, // Don't throw on error status codes
-        });
+      const axiosConfig = {
+        method: requestMethod,
+        url,
+        headers,
+        httpsAgent,
+        validateStatus: () => true,
+      };
 
-        response = {
-          status: axiosResponse.status,
-          ok: axiosResponse.status >= 200 && axiosResponse.status < 300,
-        };
-        data = axiosResponse.data;
+      if (requestMethod === "GET") {
+        axiosConfig.data = fullBody;
       } else {
-        // For POST requests, use fetch
-        const fetchResponse = await fetch(url, {
-          method,
-          headers,
-          body: payload,
-        });
+        axiosConfig.data = payload;
+      }
 
-        const text = await fetchResponse.text();
-        response = {
-          status: fetchResponse.status,
-          ok: fetchResponse.ok,
-        };
+      const axiosResponse = await axios(axiosConfig);
 
+      const response = {
+        status: axiosResponse.status,
+        ok: axiosResponse.status >= 200 && axiosResponse.status < 300,
+      };
+
+      let data = axiosResponse.data;
+      if (typeof data === "string") {
         try {
-          data = JSON.parse(text);
-        } catch (e) {
-          throw new Error(`Invalid JSON response: ${text.substring(0, 500)}`);
+          data = JSON.parse(data);
+        } catch {
+          // keep raw string if not valid json
         }
       }
 
@@ -162,48 +177,40 @@ class CoinDCXAPI {
       url += `?${query}`;
     }
 
-    const response = await fetch(url);
-    // console.log("Response, ", response)
-    const text = await response.text();
+    const response = await axios.get(url, {
+      httpsAgent,
+      validateStatus: () => true,
+    });
 
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      throw new Error(`Invalid JSON: ${text.substring(0, 500)}`);
+    if (response.status !== 200) {
+      throw new Error(
+        `Public API Error (${response.status}): ${JSON.stringify(response.data)}`,
+      );
     }
 
-    if (!response.ok) {
-      throw new Error(`Public API Error (${response.status}): ${text}`);
-    }
-
-    return data;
+    return response.data;
   }
   /**
    * Get Futures Wallet Balance (USDT or INR margined)
    * Endpoint: GET /exchange/v1/derivatives/futures/wallets
-   * IMPORTANT: This endpoint requires:
-   * - Method: GET (with body)
-   * - Signature format: Buffer.from(JSON.stringify(body)).toString()
-   * - Use axios (fetch doesn't support GET with body)
+   * This flow is verified against your working implementation.
    * @returns {Promise<Array>}
    */
   async getFuturesWallet() {
     try {
-      // Use GET method, empty params, and Buffer format for signature
       const data = await this.privateRequest(
         "GET",
         "/exchange/v1/derivatives/futures/wallets",
-        {}, // Empty params, timestamp will be added automatically
-        false, // useTradeCreds
-        true // useBufferFormat = true (required for futures wallet!)
+        {},
+        false,
+        true,
       );
 
       console.log("✅ CoinDCX Futures Wallet:", data);
       return data;
     } catch (error) {
       console.error("❌ Error fetching CoinDCX futures wallet:", error.message);
-      throw error; // Re-throw to let caller handle
+      throw error;
     }
   }
 
@@ -219,9 +226,40 @@ class CoinDCXAPI {
    */
   async getAssetBalance(asset = "USDT") {
     const wallet = await this.getFuturesWallet();
-    // Assuming wallet returns array or object with balance
-    const bal = wallet[1].balance || 0;
-    return parseFloat(bal);
+    const target = String(asset).toUpperCase();
+
+    if (Array.isArray(wallet)) {
+      // Find entry whose currency matches the requested asset
+      const entry = wallet.find(
+        (w) =>
+          String(
+            w.currency_short_name || w.asset_symbol || w.asset || "",
+          ).toUpperCase() === target,
+      );
+      if (entry) {
+        return parseFloat(entry.available_balance ?? entry.balance ?? 0);
+      }
+      // Fallback: first USDT-like entry
+      const usdt = wallet.find((w) =>
+        String(w.currency_short_name || w.asset_symbol || "")
+          .toUpperCase()
+          .includes("USDT"),
+      );
+      return usdt ? parseFloat(usdt.available_balance ?? usdt.balance ?? 0) : 0;
+    }
+
+    // Object-style response
+    if (wallet && typeof wallet === "object") {
+      return parseFloat(
+        wallet[target] ||
+          wallet[target.toLowerCase()] ||
+          wallet.available_balance ||
+          wallet.balance ||
+          0,
+      );
+    }
+
+    return 0;
   }
 
   /**
@@ -232,7 +270,7 @@ class CoinDCXAPI {
   async getOrderbook(pair, limit = 20) {
     try {
       const data = await this.publicRequest(
-        `/market_data/v3/orderbook/${pair}-futures/${limit}`
+        `/market_data/v3/orderbook/${pair}-futures/${limit}`,
       );
       //   console.log('✅ CoinDCX Orderbook fetched:', pair);
       //   console.log("Data", data)
@@ -265,7 +303,7 @@ class CoinDCXAPI {
       const data = await this.privateRequest(
         "POST",
         "/exchange/v1/derivatives/futures/positions",
-        {}
+        {},
       );
       return data || [];
     } catch (error) {
@@ -310,7 +348,7 @@ class CoinDCXAPI {
       "POST",
       "/exchange/v1/derivatives/futures/positions/update_leverage",
       params,
-      true
+      true,
     );
   }
 
@@ -383,7 +421,7 @@ class CoinDCXAPI {
 
     console.log(
       "📤 Final CoinDCX order payload:",
-      JSON.stringify(body, null, 2)
+      JSON.stringify(body, null, 2),
     );
 
     try {
@@ -392,7 +430,7 @@ class CoinDCXAPI {
         "/exchange/v1/derivatives/futures/orders/create",
         body,
         true, // useTradeCreds
-        true // useBufferFormat = true → critical for CoinDCX
+        true, // useBufferFormat = true → critical for CoinDCX
       );
 
       console.log("✅ CoinDCX order placed successfully:", result);
@@ -415,8 +453,8 @@ class CoinDCXAPI {
       "POST",
       "/exchange/v1/derivatives/futures/orders",
       params,
-      true,  // useTradeCreds
-      true   // useBufferFormat
+      true, // useTradeCreds
+      true, // useBufferFormat
     );
   }
 
@@ -431,7 +469,7 @@ class CoinDCXAPI {
       status: "open", // active/open futures orders
       size: 100,
       page: 1,
-      ...params // Allow override
+      ...params, // Allow override
     };
 
     try {
@@ -439,14 +477,17 @@ class CoinDCXAPI {
         "POST",
         "/exchange/v1/derivatives/futures/orders",
         body,
-        true,  // useTradeCreds
-        false  // useBufferFormat = false for this endpoint
+        true, // useTradeCreds
+        false, // useBufferFormat = false for this endpoint
       );
 
-      console.log('Active CoinDCX futures orders:', JSON.stringify(data, null, 2));
+      console.log(
+        "Active CoinDCX futures orders:",
+        JSON.stringify(data, null, 2),
+      );
       return data || [];
     } catch (error) {
-      console.error('CoinDCX futures orders error:', error.message);
+      console.error("CoinDCX futures orders error:", error.message);
       throw error;
     }
   }
@@ -459,7 +500,7 @@ class CoinDCXAPI {
   async cancelAllFuturesOpenOrders(filter = {}) {
     const body = {
       timestamp: Date.now(),
-      ...filter // Optional: margin_currency_short_name: ["USDT"]
+      ...filter, // Optional: margin_currency_short_name: ["USDT"]
     };
 
     try {
@@ -467,16 +508,16 @@ class CoinDCXAPI {
         "POST",
         "/exchange/v1/derivatives/futures/positions/cancel_all_open_orders",
         body,
-        true,  // useTradeCreds
-        false  // useBufferFormat = false
+        true, // useTradeCreds
+        false, // useBufferFormat = false
       );
 
-      console.log('✅ All CoinDCX futures open orders canceled!');
-      console.log('Response:', JSON.stringify(data, null, 2));
+      console.log("✅ All CoinDCX futures open orders canceled!");
+      console.log("Response:", JSON.stringify(data, null, 2));
 
       return data;
     } catch (error) {
-      console.error('❌ CoinDCX cancel all failed:', error.message);
+      console.error("❌ CoinDCX cancel all failed:", error.message);
       throw error;
     }
   }
@@ -489,8 +530,8 @@ class CoinDCXAPI {
       "POST",
       "/exchange/v1/derivatives/futures/orders/cancel",
       { id: orderId },
-      true,  // useTradeCreds
-      true   // useBufferFormat
+      true, // useTradeCreds
+      true, // useBufferFormat
     );
   }
 }
