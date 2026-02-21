@@ -119,6 +119,14 @@ export const configSettingsSchema = {
     max: 50,
   },
 
+  // Flip Exit Configuration
+  flipExitThresholdPct: {
+    type: Number,
+    default: 0.05,
+    min: 0.01,
+    max: 1.0,
+  },
+
   // Metadata
   updatedAt: {
     type: Date,
@@ -156,6 +164,7 @@ export const defaultConfigValues = {
   orderbookDepth: 50,
   orderCooldownMinutes: 5,
   bufferPercentForLiquidationProtection: 30,
+  flipExitThresholdPct: 0.05,
   updatedAt: new Date(),
   updatedBy: "system",
 };
@@ -168,23 +177,43 @@ export const validateConfig = (config) => {
 
   // API Key validations (basic format check)
   if (config.deltaApiKey !== undefined && config.deltaApiKey !== "") {
-    if (typeof config.deltaApiKey !== "string" || config.deltaApiKey.length < 10) {
-      errors.push("deltaApiKey must be a valid API key (at least 10 characters)");
+    if (
+      typeof config.deltaApiKey !== "string" ||
+      config.deltaApiKey.length < 10
+    ) {
+      errors.push(
+        "deltaApiKey must be a valid API key (at least 10 characters)",
+      );
     }
   }
   if (config.deltaApiSecret !== undefined && config.deltaApiSecret !== "") {
-    if (typeof config.deltaApiSecret !== "string" || config.deltaApiSecret.length < 10) {
-      errors.push("deltaApiSecret must be a valid API secret (at least 10 characters)");
+    if (
+      typeof config.deltaApiSecret !== "string" ||
+      config.deltaApiSecret.length < 10
+    ) {
+      errors.push(
+        "deltaApiSecret must be a valid API secret (at least 10 characters)",
+      );
     }
   }
   if (config.coindcxApiKey !== undefined && config.coindcxApiKey !== "") {
-    if (typeof config.coindcxApiKey !== "string" || config.coindcxApiKey.length < 10) {
-      errors.push("coindcxApiKey must be a valid API key (at least 10 characters)");
+    if (
+      typeof config.coindcxApiKey !== "string" ||
+      config.coindcxApiKey.length < 10
+    ) {
+      errors.push(
+        "coindcxApiKey must be a valid API key (at least 10 characters)",
+      );
     }
   }
   if (config.coindcxApiSecret !== undefined && config.coindcxApiSecret !== "") {
-    if (typeof config.coindcxApiSecret !== "string" || config.coindcxApiSecret.length < 10) {
-      errors.push("coindcxApiSecret must be a valid API secret (at least 10 characters)");
+    if (
+      typeof config.coindcxApiSecret !== "string" ||
+      config.coindcxApiSecret.length < 10
+    ) {
+      errors.push(
+        "coindcxApiSecret must be a valid API secret (at least 10 characters)",
+      );
     }
   }
 
@@ -237,7 +266,10 @@ export const validateConfig = (config) => {
 
   // Liquidity validation
   if (config.minLiquidityMultiplier !== undefined) {
-    if (config.minLiquidityMultiplier < 1.0 || config.minLiquidityMultiplier > 10.0) {
+    if (
+      config.minLiquidityMultiplier < 1.0 ||
+      config.minLiquidityMultiplier > 10.0
+    ) {
       errors.push("minLiquidityMultiplier must be between 1.0 and 10.0");
     }
   }
@@ -265,15 +297,33 @@ export const validateConfig = (config) => {
 
   // Pre-funding window validation
   if (config.preFundingWindowMinutes !== undefined) {
-    if (config.preFundingWindowMinutes < 1 || config.preFundingWindowMinutes > 60) {
+    if (
+      config.preFundingWindowMinutes < 1 ||
+      config.preFundingWindowMinutes > 60
+    ) {
       errors.push("preFundingWindowMinutes must be between 1 and 60");
     }
   }
 
   // Liquidation buffer validation
   if (config.bufferPercentForLiquidationProtection !== undefined) {
-    if (config.bufferPercentForLiquidationProtection < 5 || config.bufferPercentForLiquidationProtection > 50) {
-      errors.push("bufferPercentForLiquidationProtection must be between 5 and 50");
+    if (
+      config.bufferPercentForLiquidationProtection < 5 ||
+      config.bufferPercentForLiquidationProtection > 50
+    ) {
+      errors.push(
+        "bufferPercentForLiquidationProtection must be between 5 and 50",
+      );
+    }
+  }
+
+  // Flip exit threshold validation
+  if (config.flipExitThresholdPct !== undefined) {
+    if (
+      config.flipExitThresholdPct < 0.01 ||
+      config.flipExitThresholdPct > 1.0
+    ) {
+      errors.push("flipExitThresholdPct must be between 0.01 and 1.0");
     }
   }
 

@@ -43,6 +43,8 @@ class TradeMonitor extends EventEmitter {
 
     this.leverage = config.trading.leverage;
 
+    this.flipExitThresholdPct = config.trading.flipExitThresholdPct || 0.05;
+
     this.positionCheckInterval = null;
     this.positionVerifyInterval = null;
     this.fundingConfirmedAt = null;
@@ -264,6 +266,7 @@ class TradeMonitor extends EventEmitter {
    */
   async runAllChecks() {
     await this.performQuantityCheck();
+    await this.checkMarginRatio(); // 🆕 Margin Ratio Safety Check
     this.checkPreLiquidation();
     this.performFlipCheck();
     this.checkForNormalExit();
@@ -383,7 +386,309 @@ class TradeMonitor extends EventEmitter {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 🛡️ PRE-LIQUIDATION CHECK (3% threshold)
+  // � MARGIN RATIO SAFETY CHECK (Primary Exit Mechanism)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * 💰 MARGIN RATIO SAFETY CHECK
+   *
+   * Since we use 70% of funds at entry:
+   * - Initial margin ratio: ~70%
+   * - Exit threshold: 85-90% (before 100% = liquidation)
+   * - Monitors BOTH exchanges, exits if EITHER crosses threshold
+   *
+   * This accounts for:
+   * - Unrealized losses reducing available margin
+   * - Cross margin (account-wide) AND isolated margin
+   * - Multiple positions on same exchange
+   */
+  async checkMarginRatio() {
+    // 🔒 PREVENT MULTIPLE EXIT TRIGGERS
+    if (this.exitInProgress) {
+      console.log("⏳ Exit already in progress - skipping margin ratio check");
+      return false;
+    }
+
+    if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return false;
+
+    console.log("\n💰 MARGIN RATIO SAFETY CHECK");
+    console.log("━".repeat(70));
+
+    let deltaMarginRatio = 0;
+    let coindcxMarginRatio = 0;
+    let deltaShouldExit = false;
+    let coindcxShouldExit = false;
+
+    // Exit threshold: 85% (leaves 15% buffer before liquidation at 100%)
+    const MARGIN_RATIO_EXIT_THRESHOLD = 0.85; // 85%
+
+    // ═══════════════════════════════════════════════════════════════
+    // DELTA MARGIN RATIO
+    // ═══════════════════════════════════════════════════════════════
+    try {
+      const deltaWalletData = await deltaAPI.getWalletBalance();
+
+      let deltaBalance = 0;
+      let deltaUsedMargin = 0;
+      let deltaAvailableMargin = 0;
+      let deltaMethod = "unknown";
+
+      if (Array.isArray(deltaWalletData)) {
+        const usdtWallet = deltaWalletData.find(
+          (w) => w.asset_symbol === "USDT" || w.asset_symbol === "USD",
+        );
+
+        if (usdtWallet) {
+          // Total balance (equity) - includes unrealized PNL
+          deltaBalance = parseFloat(usdtWallet.balance || 0);
+
+          // METHOD 1: Wallet-based calculation (PRIMARY - most reliable)
+          // Available balance already accounts for:
+          // - Used margin in open positions
+          // - Unrealized PNL changes
+          // - Maintenance margin requirements
+          deltaAvailableMargin = parseFloat(usdtWallet.available_balance || 0);
+          deltaUsedMargin = deltaBalance - deltaAvailableMargin;
+          deltaMethod = "wallet";
+
+          // METHOD 2: Position-based fallback (if wallet method fails)
+          if (deltaBalance === 0 && this.latestDeltaPosition) {
+            const positionMargin = parseFloat(
+              this.latestDeltaPosition.margin || 0,
+            );
+            if (positionMargin > 0) {
+              deltaUsedMargin = positionMargin;
+              // Estimate total balance from position
+              const unrealizedPnL = parseFloat(
+                this.latestDeltaPosition.unrealized_pnl || 0,
+              );
+              deltaBalance = positionMargin + unrealizedPnL;
+              deltaMethod = "position";
+            }
+          }
+        }
+      }
+
+      if (deltaBalance > 0) {
+        deltaMarginRatio = deltaUsedMargin / deltaBalance;
+        deltaShouldExit = deltaMarginRatio >= MARGIN_RATIO_EXIT_THRESHOLD;
+
+        console.log(`   📊 DELTA MARGIN RATIO (${deltaMethod})`);
+        console.log(`   ${"─".repeat(60)}`);
+        console.log(
+          `   Total Balance (Equity):    $${deltaBalance.toFixed(2)}`,
+        );
+        console.log(
+          `   Used Margin:               $${deltaUsedMargin.toFixed(2)}`,
+        );
+        console.log(
+          `   Available Margin:          $${deltaAvailableMargin.toFixed(2)}`,
+        );
+        console.log(
+          `   Margin Ratio:              ${(deltaMarginRatio * 100).toFixed(2)}%`,
+        );
+        console.log(
+          `   Threshold:                 ${(MARGIN_RATIO_EXIT_THRESHOLD * 100).toFixed(0)}%`,
+        );
+        console.log(
+          `   Status:                    ${deltaShouldExit ? "🔴 DANGER - EXIT!" : "✅ SAFE"}`,
+        );
+      } else {
+        console.log(`   ⚠️ DELTA: Could not fetch wallet balance`);
+      }
+    } catch (error) {
+      console.log(
+        `   ⚠️ DELTA: Error fetching margin ratio - ${error.message}`,
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // COINDCX MARGIN RATIO
+    // ═══════════════════════════════════════════════════════════════
+    try {
+      const coindcxWalletData = await coindcxAPI.getAccountBalance();
+
+      let coindcxBalance = 0;
+      let coindcxUsedMargin = 0;
+      let coindcxAvailableMargin = 0;
+      let coindcxMethod = "unknown";
+
+      if (Array.isArray(coindcxWalletData)) {
+        const usdtWallet = coindcxWalletData.find(
+          (w) => (w.currency_short_name || "").toUpperCase() === "USDT",
+        );
+
+        if (usdtWallet) {
+          // Total balance (equity) - includes unrealized PNL
+          coindcxBalance = parseFloat(usdtWallet.balance || 0);
+
+          // METHOD 1: Wallet-based calculation (PRIMARY - most reliable)
+          // Available balance already accounts for:
+          // - Used margin in open positions
+          // - Unrealized PNL changes
+          // - Maintenance margin requirements
+          coindcxAvailableMargin = parseFloat(
+            usdtWallet.available_balance || 0,
+          );
+          coindcxUsedMargin = coindcxBalance - coindcxAvailableMargin;
+          coindcxMethod = "wallet";
+
+          // METHOD 2: Position-based fallback (if wallet method fails)
+          if (coindcxBalance === 0 && this.latestCoindcxPosition) {
+            // CoinDCX position margin calculation
+            const size = Math.abs(
+              parseFloat(
+                this.latestCoindcxPosition.size ||
+                  this.latestCoindcxPosition.active_pos ||
+                  this.latestCoindcxPosition.positionAmount ||
+                  0,
+              ),
+            );
+            const entryPrice = parseFloat(
+              this.latestCoindcxPosition.avg_price || 0,
+            );
+            const leverage = parseFloat(
+              this.latestCoindcxPosition.leverage || 10,
+            );
+
+            if (size > 0 && entryPrice > 0) {
+              const positionValue = size * entryPrice;
+              coindcxUsedMargin = positionValue / leverage;
+
+              const unrealizedPnL = parseFloat(
+                this.latestCoindcxPosition.unrealised_pnl ||
+                  this.latestCoindcxPosition.unrealisedPnl ||
+                  this.latestCoindcxPosition.pnl ||
+                  0,
+              );
+              coindcxBalance = coindcxUsedMargin + unrealizedPnL;
+              coindcxMethod = "position";
+            }
+          }
+        }
+      }
+
+      if (coindcxBalance > 0) {
+        coindcxMarginRatio = coindcxUsedMargin / coindcxBalance;
+        coindcxShouldExit = coindcxMarginRatio >= MARGIN_RATIO_EXIT_THRESHOLD;
+
+        console.log(`\n   📊 COINDCX MARGIN RATIO (${coindcxMethod})`);
+        console.log(`   ${"─".repeat(60)}`);
+        console.log(
+          `   Total Balance (Equity):    $${coindcxBalance.toFixed(2)}`,
+        );
+        console.log(
+          `   Used Margin:               $${coindcxUsedMargin.toFixed(2)}`,
+        );
+        console.log(
+          `   Available Margin:          $${coindcxAvailableMargin.toFixed(2)}`,
+        );
+        console.log(
+          `   Margin Ratio:              ${(coindcxMarginRatio * 100).toFixed(2)}%`,
+        );
+        console.log(
+          `   Threshold:                 ${(MARGIN_RATIO_EXIT_THRESHOLD * 100).toFixed(0)}%`,
+        );
+        console.log(
+          `   Status:                    ${coindcxShouldExit ? "🔴 DANGER - EXIT!" : "✅ SAFE"}`,
+        );
+      } else {
+        console.log(`   ⚠️ COINDCX: Could not fetch wallet balance`);
+      }
+    } catch (error) {
+      console.log(
+        `   ⚠️ COINDCX: Error fetching margin ratio - ${error.message}`,
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // TRIGGER EXIT IF NEEDED
+    // ═══════════════════════════════════════════════════════════════
+    if (deltaShouldExit || coindcxShouldExit) {
+      const triggeringSide = deltaShouldExit ? "Delta" : "CoinDCX";
+      const triggeringRatio = deltaShouldExit
+        ? deltaMarginRatio
+        : coindcxMarginRatio;
+
+      console.log("\n   🚨🚨🚨 MARGIN RATIO EXIT TRIGGERED 🚨🚨🚨");
+      console.log("   " + "=".repeat(60));
+      console.log(`   Triggering Side:       ${triggeringSide}`);
+      console.log(
+        `   Margin Ratio:          ${(triggeringRatio * 100).toFixed(2)}%`,
+      );
+      console.log(
+        `   Threshold:             ${(MARGIN_RATIO_EXIT_THRESHOLD * 100).toFixed(0)}%`,
+      );
+      console.log(`   `);
+      console.log(
+        `   📍 REASON: Margin ratio exceeded ${(MARGIN_RATIO_EXIT_THRESHOLD * 100).toFixed(0)}% threshold`,
+      );
+      console.log(
+        `   📍 MATLAB: Account approaching liquidation - protecting funds!`,
+      );
+      console.log(`   📍 ACTION: EXIT to preserve remaining margin`);
+      console.log("   " + "=".repeat(60));
+
+      // DOUBLE VERIFICATION before exit
+      console.log("\n🔄 DOUBLE VERIFICATION BEFORE MARGIN EXIT...");
+      console.log("─".repeat(60));
+      const deltaConfirmed = await this.verifyPositionExists("delta");
+      const coindcxConfirmed = await this.verifyPositionExists("coindcx");
+
+      console.log("📊 VERIFICATION RESULTS:");
+      console.log(`   Delta: ${deltaConfirmed ? "✅ Active" : "❌ Closed"}`);
+      console.log(
+        `   CoinDCX: ${coindcxConfirmed ? "✅ Active" : "❌ Closed"}`,
+      );
+      console.log("─".repeat(60));
+
+      if (!deltaConfirmed && !coindcxConfirmed) {
+        console.log("✅ Both positions already closed - no exit needed");
+        this.resetFundingState();
+        return true;
+      }
+
+      // 🔒 SET FLAG TO PREVENT MULTIPLE TRIGGERS
+      this.exitInProgress = true;
+      console.log("🔒 Exit lock acquired - preventing duplicate triggers");
+
+      this.emergencyExit("MARGIN_RATIO_EXIT", {
+        reason: "MARGIN_RATIO_EXCEEDED",
+        triggeringSide,
+        threshold: MARGIN_RATIO_EXIT_THRESHOLD,
+
+        // Delta
+        deltaMarginRatio,
+        deltaShouldExit,
+
+        // CoinDCX
+        coindcxMarginRatio,
+        coindcxShouldExit,
+
+        // Positions
+        deltaPosition: this.latestDeltaPosition,
+        coindcxPosition: this.latestCoindcxPosition,
+        timestamp: new Date().toISOString(),
+        doubleVerified: true,
+        deltaConfirmed,
+        coindcxConfirmed,
+      });
+
+      this.resetFundingState();
+      return true;
+    }
+
+    console.log(`\n   ✅ MARGIN RATIOS SAFE ON BOTH EXCHANGES`);
+    console.log(
+      `   Both below ${(MARGIN_RATIO_EXIT_THRESHOLD * 100).toFixed(0)}% threshold - HOLD positions`,
+    );
+    console.log("━".repeat(70));
+
+    return false;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // �🛡️ PRE-LIQUIDATION CHECK (3% threshold)
   // ═══════════════════════════════════════════════════════════════
 
   /**
@@ -1060,74 +1365,116 @@ class TradeMonitor extends EventEmitter {
   }
 
   performFlipCheck() {
-    // if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return;
-    // //  console.log('\n🔍 Performing Flip Safety Check...', this.latestDeltaPosition);
-    // const deltaSymbol = this.latestDeltaPosition.product_symbol;
-    // const coindcxSymbol =
-    //   this.latestCoindcxPosition.symbol ||
-    //   this.latestCoindcxPosition.contractPair;
-    // const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
-    // const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
-    // if (!deltaFRData || !coindcxFRData) {
-    //   console.log("⏳ Waiting for both funding rates...");
-    //   console.log(
-    //     `   Delta symbol: ${deltaSymbol} - FR: ${deltaFRData ? "Found" : "NOT FOUND"
-    //     }`
-    //   );
-    //   console.log(
-    //     `   Coindcx symbol: ${coindcxSymbol} - FR: ${coindcxFRData ? "Found" : "NOT FOUND"
-    //     }`
-    //   );
-    //   return;
-    // }
-    // // Both rates are stored as decimals, convert to percentage
-    // const FR_delta = deltaFRData.rate;
-    // const FR_coindcx = coindcxFRData.rate;
-    // console.log("\n🔄 FLIP SAFETY CHECK");
-    // console.log("─".repeat(60));
-    // console.log(`Delta FR:  ${FR_delta.toFixed(4)}%`);
-    // console.log(`Coindcx FR:   ${FR_coindcx.toFixed(4)}%`);
-    // let FR_first, FR_second, exchange_first, exchange_second;
-    // if (Math.abs(FR_delta) >= Math.abs(FR_coindcx)) {
-    //   FR_first = FR_delta;
-    //   FR_second = FR_coindcx;
-    //   exchange_first = "Delta";
-    //   exchange_second = "Coindcx";
-    // } else {
-    //   FR_first = FR_coindcx;
-    //   FR_second = FR_delta;
-    //   exchange_first = "Coindcx";
-    //   exchange_second = "Delta";
-    // }
-    // const diff = this.calculateFundingDifference(FR_first, FR_second);
-    // console.log(
-    //   `Funding Rate Diff (${exchange_first} - ${exchange_second}): ${diff.toFixed(
-    //     4
-    //   )}%`
-    // );
-    // console.log(`Threshold: ${this.minProfitThreshold * 100}%`);
-    // if (diff < this.minProfitThreshold * 100) {
-    //   console.log("❌ FLIP DETECTED → EMERGENCY EXIT");
-    //   console.log("─".repeat(60));
-    //   this.emit("flip", {
-    //     diff,
-    //     threshold: this.minProfitThreshold * 100,
-    //     FR_delta,
-    //     FR_coindcx,
-    //   });
-    //   this.emergencyExit("FLIP_DETECTED", {
-    //     reason: `Funding profit dropped to ${diff.toFixed(4)}% < threshold ${this.minProfitThreshold * 100
-    //       }%`,
-    //     currentDiff: diff,
-    //     deltaFR: FR_delta,
-    //     coindcxFR: FR_coindcx,
-    //     deltaPosition: this.latestDeltaPosition,
-    //     coindcxPosition: this.latestCoindcxPosition,
-    //   });
-    // } else {
-    //   console.log(`✅ Flip safe: ${diff.toFixed(4)}% profit remains`);
-    //   console.log("─".repeat(60));
-    // }
+    // Skip if no positions or exit already in progress
+    if (
+      !this.latestDeltaPosition ||
+      !this.latestCoindcxPosition ||
+      this.exitInProgress
+    ) {
+      return;
+    }
+
+    // Get funding rates using the same sources as opportunity scanning
+    const deltaSymbol = this.latestDeltaPosition.product_symbol;
+    const coindcxSymbol =
+      this.latestCoindcxPosition.symbol ||
+      this.latestCoindcxPosition.contractPair;
+
+    const deltaFundingData = this.deltaExchange?.getFundingData(deltaSymbol);
+    const binanceSymbol = this.coindcxMonitor.coindcxToBinance(coindcxSymbol);
+    const coindcxFundingData =
+      this.coindcxExchange?.getFundingData(binanceSymbol);
+
+    let FR_delta = deltaFundingData?.fundingRate;
+    let FR_coindcx = coindcxFundingData?.fundingRate;
+
+    const isInvalidRate = (rate) =>
+      rate === null || rate === undefined || Number.isNaN(rate);
+
+    // Fallback to monitor rates if exchange sources are missing
+    if (isInvalidRate(FR_delta) || isInvalidRate(FR_coindcx)) {
+      const deltaFRData = this.deltaMonitor.getFundingRate(deltaSymbol);
+      const coindcxFRData = this.coindcxMonitor.getFundingRate(coindcxSymbol);
+      FR_delta = !isInvalidRate(deltaFRData?.rate)
+        ? deltaFRData.rate
+        : FR_delta;
+      FR_coindcx = !isInvalidRate(coindcxFRData?.rate)
+        ? coindcxFRData.rate
+        : FR_coindcx;
+    }
+
+    // Wait for both funding rates to be available
+    if (isInvalidRate(FR_delta) || isInvalidRate(FR_coindcx)) {
+      return;
+    }
+
+    console.log(
+      `🔎 Flip FR sources | Delta ${deltaSymbol}: ${FR_delta.toFixed(4)}% | Binance ${binanceSymbol}: ${FR_coindcx.toFixed(4)}%`,
+    );
+
+    // Determine which rate is LONG (higher absolute) and which is SHORT (lower absolute)
+    let FR_long, FR_short, exchange_long, exchange_short;
+    if (Math.abs(FR_delta) >= Math.abs(FR_coindcx)) {
+      FR_long = FR_delta;
+      FR_short = FR_coindcx;
+      exchange_long = "Delta";
+      exchange_short = "CoinDCX";
+    } else {
+      FR_long = FR_coindcx;
+      FR_short = FR_delta;
+      exchange_long = "CoinDCX";
+      exchange_short = "Delta";
+    }
+
+    // Calculate funding rate difference: |FR_long| - |FR_short|
+    const fundingDiff = this.calculateFundingDifference(FR_long, FR_short);
+
+    console.log("\n🔄 FLIP SAFETY CHECK");
+    console.log("─".repeat(60));
+    console.log(`Delta FR:        ${FR_delta.toFixed(4)}%`);
+    console.log(`CoinDCX FR:      ${FR_coindcx.toFixed(4)}%`);
+    console.log(`│`);
+    console.log(
+      `Long (${exchange_long}):  ${FR_long.toFixed(4)}% (|${Math.abs(FR_long).toFixed(4)}%|)`,
+    );
+    console.log(
+      `Short (${exchange_short}): ${FR_short.toFixed(4)}% (|${Math.abs(FR_short).toFixed(4)}%|)`,
+    );
+    console.log(`│`);
+    console.log(
+      `Funding Diff: ${fundingDiff.toFixed(4)}% (|${Math.abs(FR_long).toFixed(4)}%| - |${Math.abs(FR_short).toFixed(4)}%|)`,
+    );
+    console.log(`Threshold:    ${this.flipExitThresholdPct.toFixed(4)}%`);
+    console.log("─".repeat(60));
+
+    // Check if funding diff is below threshold (danger zone)
+    if (fundingDiff < this.flipExitThresholdPct) {
+      console.log(`❌ FLIP DETECTED: Funding margin too thin!`);
+      console.log(`   → Triggering EMERGENCY EXIT`);
+      console.log("─".repeat(60));
+
+      // 🔒 SET FLAG TO PREVENT MULTIPLE TRIGGERS
+      this.exitInProgress = true;
+      console.log("🔒 Exit lock acquired - preventing duplicate triggers");
+
+      this.emergencyExit("FLIP_EXIT", {
+        reason: `Funding rate differential dropped to ${fundingDiff.toFixed(4)}% < threshold ${this.flipExitThresholdPct.toFixed(4)}%`,
+        currentDiff: fundingDiff,
+        deltaFR: FR_delta,
+        coindcxFR: FR_coindcx,
+        longFR: FR_long,
+        shortFR: FR_short,
+        exchangeLong: exchange_long,
+        exchangeShort: exchange_short,
+        deltaPosition: this.latestDeltaPosition,
+        coindcxPosition: this.latestCoindcxPosition,
+      });
+    } else {
+      console.log(
+        `✅ Flip safe: ${fundingDiff.toFixed(4)}% margin remains > ${this.flipExitThresholdPct.toFixed(4)}%`,
+      );
+      console.log("─".repeat(60));
+    }
   }
 
   /**
@@ -1456,6 +1803,13 @@ class TradeMonitor extends EventEmitter {
           console.log(`      Symbol: ${activeDeltaREST.product_symbol}`);
           console.log(`      Size: ${activeDeltaREST.size}`);
           console.log(`      Side: ${activeDeltaREST.side}`);
+          console.log("      Live Fields:");
+          console.log(
+            `        entry_price=${activeDeltaREST.entry_price} | mark_price=${activeDeltaREST.mark_price} | liquidation_price=${activeDeltaREST.liquidation_price}`,
+          );
+          console.log(
+            `        margin_mode=${activeDeltaREST.margin_mode} | leverage=${activeDeltaREST.leverage || activeDeltaREST.product?.default_leverage} | maintenance_margin=${activeDeltaREST.product?.maintenance_margin}`,
+          );
         } else {
           console.log(`   Delta REST: ❌ NO ACTIVE POSITION`);
         }
@@ -2254,14 +2608,10 @@ class TradeMonitor extends EventEmitter {
   }
 
   calculateFundingDifference(FR_first, FR_second) {
-    const sign_first = Math.sign(FR_first);
-    const sign_second = Math.sign(FR_second);
-
-    if (sign_first === sign_second) {
-      return Math.abs(FR_first) - Math.abs(FR_second);
-    } else {
-      return Math.abs(FR_first) + Math.abs(FR_second);
-    }
+    // Formula: fundingDiff = |FR_first| - |FR_second|
+    // FR_first should be LONG (higher absolute funding rate)
+    // FR_second should be SHORT (lower absolute funding rate)
+    return Math.abs(FR_first) - Math.abs(FR_second);
   }
 
   async emergencyExit(reason, details) {

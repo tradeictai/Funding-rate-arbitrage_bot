@@ -18,10 +18,20 @@ const router = express.Router();
  */
 async function getPublicIP() {
   const services = [
-    { url: "https://api.ipify.org?format=json", parser: (data) => JSON.parse(data).ip },
+    {
+      url: "https://api.ipify.org?format=json",
+      parser: (data) => JSON.parse(data).ip,
+    },
     { url: "https://ipinfo.io/json", parser: (data) => JSON.parse(data).ip },
-    { url: "https://api.my-ip.io/ip.json", parser: (data) => JSON.parse(data).ip },
-    { url: "http://ip-api.com/json", parser: (data) => JSON.parse(data).query, protocol: http },
+    {
+      url: "https://api.my-ip.io/ip.json",
+      parser: (data) => JSON.parse(data).ip,
+    },
+    {
+      url: "http://ip-api.com/json",
+      parser: (data) => JSON.parse(data).query,
+      protocol: http,
+    },
   ];
 
   for (const service of services) {
@@ -242,14 +252,16 @@ router.get("/credentials", async (req, res) => {
  */
 router.put("/credentials", async (req, res) => {
   try {
-    const { deltaApiKey, deltaApiSecret, coindcxApiKey, coindcxApiSecret } = req.body;
+    const { deltaApiKey, deltaApiSecret, coindcxApiKey, coindcxApiSecret } =
+      req.body;
 
     // Build update object with only provided fields
     const updates = {};
     if (deltaApiKey !== undefined) updates.deltaApiKey = deltaApiKey;
     if (deltaApiSecret !== undefined) updates.deltaApiSecret = deltaApiSecret;
     if (coindcxApiKey !== undefined) updates.coindcxApiKey = coindcxApiKey;
-    if (coindcxApiSecret !== undefined) updates.coindcxApiSecret = coindcxApiSecret;
+    if (coindcxApiSecret !== undefined)
+      updates.coindcxApiSecret = coindcxApiSecret;
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({
@@ -285,7 +297,9 @@ router.put("/credentials", async (req, res) => {
         coindcx: {
           apiKey: maskSecretEarly(result.config.coindcxApiKey),
           apiSecret: maskSecretEarly(result.config.coindcxApiSecret),
-          isSet: !!(result.config.coindcxApiKey && result.config.coindcxApiSecret),
+          isSet: !!(
+            result.config.coindcxApiKey && result.config.coindcxApiSecret
+          ),
         },
       },
     });
@@ -373,14 +387,14 @@ router.get("/server-ip", async (req, res) => {
           botServerIp: publicIP,
           botServerLastSeen: new Date(),
         },
-        "system"
+        "system",
       );
       console.log(`[API] Bot server IP updated: ${publicIP}`);
     } else if (publicIP) {
       // Just update last seen time
       await configService.updateConfig(
         { botServerLastSeen: new Date() },
-        "system"
+        "system",
       );
     }
 
@@ -433,7 +447,7 @@ router.post("/server-ip/refresh", async (req, res) => {
         botServerIp: publicIP,
         botServerLastSeen: new Date(),
       },
-      "frontend"
+      "frontend",
     );
 
     if (!result.success) {
@@ -551,7 +565,16 @@ router.get("/fields", (req, res) => {
       min: 5,
       max: 50,
       default: 30,
-      description: "Buffer percentage before liquidation price to trigger exit (%)",
+      description:
+        "Buffer percentage before liquidation price to trigger exit (%)",
+    },
+    flipExitThresholdPct: {
+      type: "number",
+      min: 0.01,
+      max: 1.0,
+      default: 0.05,
+      description:
+        "Funding rate differential threshold for flip exit. Exit if |FR_long| - |FR_short| < threshold (%)",
     },
   };
 

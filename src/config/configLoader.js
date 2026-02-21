@@ -79,6 +79,8 @@ function getDefaultTradingConfig() {
     maxSlippagePct: parseFloat(process.env.MAX_SLIPPAGE_PCT) || 0.1,
     orderbookDepth: parseInt(process.env.ORDERBOOK_DEPTH) || 20,
     minNetProfitPct: parseFloat(process.env.MIN_NET_PROFIT_PCT) || 0.05,
+    flipExitThresholdPct:
+      parseFloat(process.env.FLIP_EXIT_THRESHOLD_PCT) || 0.05,
     paperTradingMode: process.env.PAPER_TRADING_MODE === "true" || false,
     orderCooldownMinutes: parseInt(process.env.ORDER_COOLDOWN_MINUTES) || 5,
     quantityTolerance: parseFloat(process.env.QUANTITY_TOLERANCE) || 0,
@@ -195,6 +197,10 @@ export async function loadConfigFromDB() {
         dbConfig.bufferPercentForLiquidationProtection ??
         parseFloat(process.env.BUFFER_PERCENT_FOR_LIQUIDATION_PROTECTION) ??
         30,
+      flipExitThresholdPct:
+        dbConfig.flipExitThresholdPct ??
+        parseFloat(process.env.FLIP_EXIT_THRESHOLD_PCT) ??
+        0.05,
 
       // .env only fields
       fundingTimeWindowSeconds:
