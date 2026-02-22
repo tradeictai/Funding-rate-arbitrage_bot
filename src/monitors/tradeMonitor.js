@@ -409,7 +409,10 @@ class TradeMonitor extends EventEmitter {
       return false;
     }
 
-    if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return false;
+    if (!this.latestDeltaPosition || !this.latestCoindcxPosition) {
+      console.log("\n💰 MARGIN RATIO SAFETY CHECK - SKIPPED (no positions)");
+      return false;
+    }
 
     console.log("\n💰 MARGIN RATIO SAFETY CHECK");
     console.log("━".repeat(70));
@@ -523,14 +526,11 @@ class TradeMonitor extends EventEmitter {
           coindcxBalance = parseFloat(usdtWallet.balance || 0);
 
           // METHOD 1: Wallet-based calculation (PRIMARY - most reliable)
-          // Available balance already accounts for:
-          // - Used margin in open positions
-          // - Unrealized PNL changes
-          // - Maintenance margin requirements
-          coindcxAvailableMargin = parseFloat(
-            usdtWallet.available_balance || 0,
-          );
-          coindcxUsedMargin = coindcxBalance - coindcxAvailableMargin;
+          // CoinDCX returns cross_user_margin (used margin) instead of available_balance
+          // Available = balance - cross_user_margin
+          const crossUserMargin = parseFloat(usdtWallet.cross_user_margin || 0);
+          coindcxUsedMargin = crossUserMargin;
+          coindcxAvailableMargin = coindcxBalance - coindcxUsedMargin;
           coindcxMethod = "wallet";
 
           // METHOD 2: Position-based fallback (if wallet method fails)
