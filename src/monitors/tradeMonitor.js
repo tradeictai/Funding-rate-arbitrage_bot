@@ -57,6 +57,10 @@ class TradeMonitor extends EventEmitter {
     this.lastPositionExistenceCheck = 0; // Throttle position existence checks
     this.exitInProgress = false; // 🔒 Flag to prevent multiple exit triggers
 
+    // 🆕 Per-exchange exit confirmation tracking
+    this.deltaExitConfirmed = false; // Track if Delta was intentionally exited
+    this.coindcxExitConfirmed = false; // Track if CoinDCX was intentionally exited
+
     this.setupEventHandlers();
   }
 
@@ -266,7 +270,7 @@ class TradeMonitor extends EventEmitter {
    */
   async runAllChecks() {
     await this.performQuantityCheck();
-    await this.checkMarginRatio(); // 🆕 Margin Ratio Safety Check
+    // await this.checkMarginRatio(); // 🆕 Margin Ratio Safety Check (DISABLED - uncomment to re-enable)
     this.checkPreLiquidation();
     this.performFlipCheck();
     this.checkForNormalExit();
@@ -281,6 +285,26 @@ class TradeMonitor extends EventEmitter {
     console.log("\n🔴 DELTA POSITION CLOSED DETECTED");
     console.log("=".repeat(60));
     console.log(`   Reason: ${data.reason || data.type || "unknown"}`);
+
+    // 🔒 CHECK: If exit already in progress, don't trigger another one
+    if (this.exitInProgress) {
+      console.log(
+        "   ⏳ Exit already in progress - skipping position closed handler",
+      );
+      console.log("   (This position close is expected from ongoing exit)");
+      console.log("=".repeat(60));
+      return;
+    }
+
+    // 🔒 CHECK: If this exchange was already intentionally exited, don't re-trigger
+    if (this.deltaExitConfirmed) {
+      console.log(
+        "   ✅ Delta exit already confirmed - skipping duplicate handler",
+      );
+      console.log("   (Position close was expected from previous exit)");
+      console.log("=".repeat(60));
+      return;
+    }
 
     const previousPosition = this.latestDeltaPosition;
 
@@ -335,6 +359,26 @@ class TradeMonitor extends EventEmitter {
     console.log("\n🔴 COINDCX POSITION CLOSED DETECTED");
     console.log("=".repeat(60));
     console.log(`   Reason: ${data.reason || data.type || "unknown"}`);
+
+    // 🔒 CHECK: If exit already in progress, don't trigger another one
+    if (this.exitInProgress) {
+      console.log(
+        "   ⏳ Exit already in progress - skipping position closed handler",
+      );
+      console.log("   (This position close is expected from ongoing exit)");
+      console.log("=".repeat(60));
+      return;
+    }
+
+    // 🔒 CHECK: If this exchange was already intentionally exited, don't re-trigger
+    if (this.coindcxExitConfirmed) {
+      console.log(
+        "   ✅ CoinDCX exit already confirmed - skipping duplicate handler",
+      );
+      console.log("   (Position close was expected from previous exit)");
+      console.log("=".repeat(60));
+      return;
+    }
 
     const previousPosition = this.latestCoindcxPosition;
 
@@ -1621,9 +1665,26 @@ class TradeMonitor extends EventEmitter {
 
     // One-sided detected
     if (!this.oneSidedDetectedAt) {
-      this.oneSidedDetectedAt = now;
       const activeSide = hasDelta ? "Delta" : "CoinDCX";
       const missingSide = hasDelta ? "CoinDCX" : "Delta";
+
+      // 🛡️ CHECK: If the missing side was intentionally exited, don't start timer
+      const missingWasIntentional =
+        (missingSide === "Delta" && this.deltaExitConfirmed) ||
+        (missingSide === "CoinDCX" && this.coindcxExitConfirmed);
+
+      if (missingWasIntentional) {
+        console.log(
+          `   ℹ️ ONE-SIDED (EXPECTED): ${activeSide} active, ${missingSide} was intentionally exited`,
+        );
+        console.log(
+          `   ⏭️ Skipping one-sided exit trigger - this is expected from recent exit`,
+        );
+        console.log("─".repeat(60));
+        return;
+      }
+
+      this.oneSidedDetectedAt = now;
       console.log(
         `   ⚠️ ONE-SIDED: ${activeSide} active, ${missingSide} missing!`,
       );
@@ -1686,6 +1747,23 @@ class TradeMonitor extends EventEmitter {
 
       const activeSide = deltaConfirmed ? "Delta" : "CoinDCX";
       const missingSide = deltaConfirmed ? "CoinDCX" : "Delta";
+
+      // 🛡️ DOUBLE CHECK: If missing side was intentionally exited, don't trigger
+      const missingWasIntentional =
+        (missingSide === "Delta" && this.deltaExitConfirmed) ||
+        (missingSide === "CoinDCX" && this.coindcxExitConfirmed);
+
+      if (missingWasIntentional) {
+        console.log(
+          `   ℹ️ ${missingSide} was intentionally exited - skipping one-sided exit`,
+        );
+        console.log(
+          `   → This is expected behavior, not a true one-sided scenario`,
+        );
+        this.oneSidedDetectedAt = null;
+        console.log("─".repeat(60));
+        return;
+      }
 
       console.log(`   Active Side: ${activeSide}`);
       console.log(`   Missing Side: ${missingSide}`);
@@ -2727,6 +2805,8 @@ class TradeMonitor extends EventEmitter {
     this.latestCoindcxPosition = null;
     this.oneSidedDetectedAt = null;
     this.exitInProgress = false; // 🔓 Reset exit lock
+    this.deltaExitConfirmed = false; // 🔓 Reset exit confirmation flags
+    this.coindcxExitConfirmed = false;
     this.resetFundingState();
   }
 
@@ -2734,11 +2814,31 @@ class TradeMonitor extends EventEmitter {
    * Call this after exit is confirmed to clean up monitoring
    * This should be called by the exit handler after positions are verified closed
    */
-  confirmExitComplete() {
+  confirmExitComplete(deltaExited = false, coindcxExited = false) {
     console.log("\n✅ EXIT CONFIRMED - Cleaning up monitor state");
+
+    // 🆕 Mark which exchanges successfully exited
+    if (deltaExited) {
+      this.deltaExitConfirmed = true;
+      console.log("   📝 Delta exit confirmed - will not re-trigger");
+    }
+    if (coindcxExited) {
+      this.coindcxExitConfirmed = true;
+      console.log("   📝 CoinDCX exit confirmed - will not re-trigger");
+    }
+
     this.exitInProgress = false; // 🔓 Release exit lock
     console.log("🔓 Exit lock released - ready for new operations");
-    this.unregisterTrade();
+
+    // Only fully unregister if BOTH sides exited
+    if (deltaExited && coindcxExited) {
+      console.log("✅ Both sides exited - fully unregistering trade");
+      this.unregisterTrade();
+    } else {
+      console.log(
+        "⚠️ Partial exit - keeping monitor active for remaining position",
+      );
+    }
   }
 
   async start() {

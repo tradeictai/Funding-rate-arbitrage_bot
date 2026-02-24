@@ -150,6 +150,30 @@ class ExitManager {
    * @returns {Promise<Object>} - Exit order result
    */
   async exitDeltaPosition(position, exitPrice = null) {
+    // 🔒 VALIDATION: Ensure position actually exists and has size > 0
+    if (!position || !position.details || !position.details.deltaPosition) {
+      console.log("⚠️ Delta position data missing - skipping exit");
+      return {
+        success: false,
+        exchange: "delta",
+        error: "Position data missing",
+        skipped: true,
+      };
+    }
+
+    const positionSize = Math.abs(position.details.deltaPosition.size || 0);
+    if (positionSize === 0) {
+      console.log(
+        "⚠️ Delta position size is 0 - already closed, skipping exit",
+      );
+      return {
+        success: true,
+        exchange: "delta",
+        message: "Position already closed (size = 0)",
+        skipped: true,
+      };
+    }
+
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
         console.log(
@@ -157,7 +181,7 @@ class ExitManager {
         );
         console.log("Position details:", position);
 
-        const size = Math.abs(position.details.deltaPosition.size);
+        const size = positionSize; // Already validated above
         const side =
           position.details.deltaPosition.side === "LONG" ? "sell" : "buy"; // Opposite side to close
 
@@ -399,6 +423,36 @@ class ExitManager {
 
   async exitCoinDCXPosition(position, exitPrice = null) {
     console.log("postions: ", position);
+
+    // 🔒 VALIDATION: Ensure position actually exists and has size > 0
+    if (!position || !position.details || !position.details.coindcxPosition) {
+      console.log("⚠️ CoinDCX position data missing - skipping exit");
+      return {
+        success: false,
+        exchange: "coindcx",
+        error: "Position data missing",
+        skipped: true,
+      };
+    }
+
+    const positionSize = Math.abs(
+      position.details.coindcxPosition.active_pos ||
+        position.details.coindcxPosition.size ||
+        0,
+    );
+
+    if (positionSize === 0) {
+      console.log(
+        "⚠️ CoinDCX position size is 0 - already closed, skipping exit",
+      );
+      return {
+        success: true,
+        exchange: "coindcx",
+        message: "Position already closed (size = 0)",
+        skipped: true,
+      };
+    }
+
     try {
       const pair =
         position.details.coindcxPosition.pair ||
@@ -413,11 +467,7 @@ class ExitManager {
       const leverage = Number(position.details.coindcxPosition.leverage) || 10;
       // Always use market order for immediate execution
 
-      const size = Math.abs(
-        position.details.coindcxPosition.active_pos ||
-          position.details.coindcxPosition.size ||
-          0,
-      );
+      const size = positionSize; // Already validated above
       const sideToClose =
         position.details.coindcxPosition.side === "SHORT" ? "buy" : "sell"; // Opposite
       // const roundedPrice = Math.round(Number(exitPrice) * 1000000) / 1000000;

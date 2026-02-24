@@ -1487,15 +1487,32 @@ class ArbitrageEngine extends EventEmitter {
 
         // Confirm exit to trade monitor to clean up state
         console.log("\n📝 Confirming exit completion to trade monitor...");
-        this.tradeMonitor.confirmExitComplete();
+
+        // Pass which exchanges successfully exited
+        const deltaExited = hasDeltaPosition && exitResult.deltaExit?.success;
+        const coindcxExited =
+          hasCoindcxPosition && exitResult.coindcxExit?.success;
+
+        console.log(`   Delta exited: ${deltaExited ? "✅ Yes" : "❌ No"}`);
+        console.log(`   CoinDCX exited: ${coindcxExited ? "✅ Yes" : "❌ No"}`);
+
+        this.tradeMonitor.confirmExitComplete(deltaExited, coindcxExited);
       } else {
         console.error("\n❌ EMERGENCY EXIT FAILED");
         console.error(`   Stage: ${exitResult.stage}`);
         console.error(`   Reason: ${exitResult.reason || "Unknown"}`);
 
+        // Check which exchanges actually succeeded despite overall failure
+        const deltaExited = hasDeltaPosition && exitResult.deltaExit?.success;
+        const coindcxExited =
+          hasCoindcxPosition && exitResult.coindcxExit?.success;
+
         // Still confirm to clean up monitor, but log that exit failed
-        console.log("\n⚠️ Exit failed, but cleaning up monitor state...");
-        this.tradeMonitor.confirmExitComplete();
+        console.log("\n⚠️ Exit partially failed, cleaning up monitor state...");
+        console.log(`   Delta exited: ${deltaExited ? "✅ Yes" : "❌ No"}`);
+        console.log(`   CoinDCX exited: ${coindcxExited ? "✅ Yes" : "❌ No"}`);
+
+        this.tradeMonitor.confirmExitComplete(deltaExited, coindcxExited);
       }
 
       // Clear active trade
