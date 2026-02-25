@@ -18,6 +18,8 @@ class ExitManager {
     this.pollInterval = config.trading.pollIntervalSeconds * 1000; // Convert to ms
     this.orderbookDepth = config.trading.orderbookDepth || 20;
     this.maxRetries = 5;
+    this.exitRetryAttempts = 3; // 1 try + 2 retries
+    this.exitRetryDelayMs = 2000;
   }
 
   /**
@@ -453,88 +455,108 @@ class ExitManager {
       };
     }
 
-    try {
-      const pair =
-        position.details.coindcxPosition.pair ||
-        position.details.coindcxPosition.symbol;
-      console.log(`\n📤 Exiting CoinDCX position: ${pair}`);
+    const pair =
+      position.details.coindcxPosition.pair ||
+      position.details.coindcxPosition.symbol;
+    console.log(`\n📤 Exiting CoinDCX position: ${pair}`);
 
-      const positionId = position.details.coindcxPosition.id;
-      if (!positionId) {
-        throw new Error("Position ID required to exit");
-      }
-
-      const leverage = Number(position.details.coindcxPosition.leverage) || 10;
-      // Always use market order for immediate execution
-
-      const size = positionSize; // Already validated above
-      const sideToClose =
-        position.details.coindcxPosition.side === "SHORT" ? "buy" : "sell"; // Opposite
-      // const roundedPrice = Math.round(Number(exitPrice) * 1000000) / 1000000;
-
-      const orderParams = {
-        order: {
-          pair: pair,
-          side: sideToClose,
-          order_type: "market_order",
-          total_quantity: size,
-          // price: exitPrice,
-          leverage: leverage,
-          notification: "no_notification",
-          position_margin_type: position.margin_type || "crossed",
-          margin_currency_short_name:
-            position.margin_currency_short_name || "USDT",
-        },
-      };
-
-      const result = await coindcxAPI.placeOrder(orderParams);
-
-      console.log("✅ CoinDCX market exit order placed");
-
-      return {
-        success: true,
-        exchange: "coindcx",
-        orderId: result.id,
-        symbol: pair,
-        side: sideToClose,
-        quantity: size,
-        orderType: "market",
-        // exitPrice,
-        result,
-      };
-
-      // Market full close via Exit endpoint
-      // console.log(`   Using Market Exit for full position close`);
-      // console.log(`   Position ID: ${positionId}`);
-
-      // const body = { id: positionId };
-
-      // const result = await this.privateRequest(
-      //   'POST',
-      //   '/exchange/v1/derivatives/futures/positions/exit',
-      //   body,
-      //   true,  // trade credentials
-      //   true   // Buffer format
-      // );
-
-      // console.log('✅ CoinDCX position fully closed');
-
-      // return {
-      //   success: true,
-      //   exchange: 'coindcx',
-      //   groupId: result.group_id,
-      //   symbol: position.pair || position.symbol,
-      //   orderType: 'market_exit',
-      //   result
-      // };
-    } catch (error) {
-      console.error(`❌ Failed to exit CoinDCX position:`, error.message);
+    const positionId = position.details.coindcxPosition.id;
+    if (!positionId) {
       return {
         success: false,
         exchange: "coindcx",
-        error: error.message,
+        error: "Position ID required to exit",
       };
     }
+
+    const leverage = Number(position.details.coindcxPosition.leverage) || 10;
+    const size = positionSize; // Already validated above
+    const sideToClose =
+      position.details.coindcxPosition.side === "SHORT" ? "buy" : "sell"; // Opposite
+
+    for (let attempt = 1; attempt <= this.exitRetryAttempts; attempt++) {
+      try {
+        const orderParams = {
+          order: {
+            pair: pair,
+            side: sideToClose,
+            order_type: "market_order",
+            total_quantity: size,
+            leverage: leverage,
+            notification: "no_notification",
+            position_margin_type: position.margin_type || "crossed",
+            margin_currency_short_name:
+              position.margin_currency_short_name || "USDT",
+          },
+        };
+
+        const result = await coindcxAPI.placeOrder(orderParams);
+
+        console.log(
+          `✅ CoinDCX market exit order placed (Attempt ${attempt}/${this.exitRetryAttempts})`,
+        );
+
+        return {
+          success: true,
+          exchange: "coindcx",
+          orderId: result.id,
+          symbol: pair,
+          side: sideToClose,
+          quantity: size,
+          orderType: "market",
+          result,
+        };
+      } catch (error) {
+        console.error(
+          `❌ CoinDCX exit attempt ${attempt}/${this.exitRetryAttempts} failed:`,
+          error.message,
+        );
+
+        if (attempt >= this.exitRetryAttempts) {
+          return {
+            success: false,
+            exchange: "coindcx",
+            error: error.message,
+            attempts: attempt,
+          };
+        }
+
+        console.log(
+          `⏳ Retrying CoinDCX exit in ${this.exitRetryDelayMs / 1000}s...`,
+        );
+        await sleep(this.exitRetryDelayMs);
+      }
+    }
+
+    // Market full close via Exit endpoint
+    // console.log(`   Using Market Exit for full position close`);
+    // console.log(`   Position ID: ${positionId}`);
+
+    // const body = { id: positionId };
+
+    // const result = await this.privateRequest(
+    //   'POST',
+    //   '/exchange/v1/derivatives/futures/positions/exit',
+    //   body,
+    //   true,  // trade credentials
+    //   true   // Buffer format
+    // );
+
+    // console.log('✅ CoinDCX position fully closed');
+
+    // return {
+    //   success: true,
+    //   exchange: 'coindcx',
+    //   groupId: result.group_id,
+    //   symbol: position.pair || position.symbol,
+    //   orderType: 'market_exit',
+    //   result
+    // };
+    return {
+      success: false,
+      exchange: "coindcx",
+      error: "CoinDCX exit failed after retries",
+    };
   }
   /**
    * Normal exit after funding credit (market orders)
@@ -601,7 +623,7 @@ class ExitManager {
         type: "normal_exit",
         deltaExit,
         coindcxExit,
-        fundingCredit: fundingResult,
+        fundingCredit: null,
         exitTime: new Date().toISOString(),
       };
 

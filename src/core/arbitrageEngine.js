@@ -1630,6 +1630,9 @@ class ArbitrageEngine extends EventEmitter {
         coindcxPosition,
       );
 
+      const deltaExited = !!exitResult?.deltaExit?.success;
+      const coindcxExited = !!exitResult?.coindcxExit?.success;
+
       // Log results
       if (exitResult.success) {
         this.resetPositionLock();
@@ -1637,15 +1640,28 @@ class ArbitrageEngine extends EventEmitter {
         console.log(`   Exit Type: ${exitResult.type}`);
         console.log(`   Delta Order ID: ${exitResult.deltaExit.orderId}`);
         console.log(`   COindcx Order ID: ${exitResult.coindcxExit.orderId}`);
+
+        // Confirm full exit to monitor
+        this.tradeMonitor.confirmExitComplete(true, true);
+        this.activeTrade = null;
       } else {
         console.error("\n❌ NORMAL EXIT FAILED");
         console.error(`   Stage: ${exitResult.stage}`);
         console.error(`   Reason: ${exitResult.reason || "Unknown"}`);
-      }
 
-      // Unregister trade from monitoring
-      this.tradeMonitor.unregisterTrade();
-      this.activeTrade = null;
+        console.log(
+          "\n⚠️ Normal exit partially/fully failed, keeping monitor active...",
+        );
+        console.log(`   Delta exited: ${deltaExited ? "✅ Yes" : "❌ No"}`);
+        console.log(`   CoinDCX exited: ${coindcxExited ? "✅ Yes" : "❌ No"}`);
+
+        // Confirm partial exits only; monitor stays active for remaining side
+        this.tradeMonitor.confirmExitComplete(deltaExited, coindcxExited);
+
+        if (deltaExited && coindcxExited) {
+          this.activeTrade = null;
+        }
+      }
 
       console.log("=".repeat(60));
     } catch (error) {

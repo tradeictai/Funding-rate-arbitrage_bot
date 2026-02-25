@@ -2052,11 +2052,17 @@ class TradeMonitor extends EventEmitter {
   clearDeltaPosition(reason) {
     console.log(`🧹 Clearing Delta position (reason: ${reason})`);
     this.latestDeltaPosition = null;
+    if (this.deltaMonitor) {
+      this.deltaMonitor.emit("position", { type: "closed", position: null });
+    }
   }
 
   clearCoindcxPosition(reason) {
     console.log(`🧹 Clearing CoinDCX position (reason: ${reason})`);
     this.latestCoindcxPosition = null;
+    if (this.coindcxMonitor) {
+      this.coindcxMonitor.emit("position", { type: "closed", position: null });
+    }
   }
 
   /**
