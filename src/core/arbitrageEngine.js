@@ -414,6 +414,33 @@ class ArbitrageEngine extends EventEmitter {
    * This is the main Phase 1 logic - BIDIRECTIONAL SEARCH
    */
   async processPotentialOpportunities() {
+    if (!this.isRunning) {
+      return;
+    }
+
+    if (this.isExecuting) {
+      console.log(
+        `\nScanning blocked → Executing: ${this.isExecuting} | Active Position: ${this.hasActivePosition}`,
+      );
+      return;
+    }
+
+    if (this.hasActivePosition) {
+      // 🔒 Self-heal stale lock from delayed/missed monitor updates
+      this.updatePositionLockStatus();
+
+      if (!this.hasActivePosition) {
+        console.log(
+          "\n🔓 Stale position lock auto-cleared - resuming opportunity scan",
+        );
+      } else {
+        console.log(
+          `\nScanning blocked → Executing: ${this.isExecuting} | Active Position: ${this.hasActivePosition}`,
+        );
+        return;
+      }
+    }
+
     if (!this.isRunning || this.isExecuting || this.hasActivePosition) {
       console.log(
         `\nScanning blocked → Executing: ${this.isExecuting} | Active Position: ${this.hasActivePosition}`,
@@ -754,10 +781,19 @@ class ArbitrageEngine extends EventEmitter {
 
     // CRITICAL: Block new trades if we still have an open position from previous trade
     if (this.hasActivePosition) {
-      console.log(
-        `\n🚫 BLOCKED: Active position exists for previous trade → Skipping ${opportunity.token}`,
-      );
-      return;
+      // 🔒 Self-heal stale lock before skipping a qualified top opportunity
+      this.updatePositionLockStatus();
+
+      if (!this.hasActivePosition) {
+        console.log(
+          `\n🔓 Cleared stale lock before execution → Proceeding with ${opportunity.token}`,
+        );
+      } else {
+        console.log(
+          `\n🚫 BLOCKED: Active position exists for previous trade → Skipping ${opportunity.token}`,
+        );
+        return;
+      }
     }
 
     // SET EXECUTION LOCK IMMEDIATELY to prevent race conditions
