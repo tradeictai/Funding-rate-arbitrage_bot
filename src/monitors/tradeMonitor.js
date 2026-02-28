@@ -758,6 +758,32 @@ class TradeMonitor extends EventEmitter {
 
     if (!this.latestDeltaPosition || !this.latestCoindcxPosition) return false;
 
+    // ─── PATCH FRESH MARK PRICES FROM LIVE TICKER STREAMS ───────────────────────
+    // latestDeltaPosition.mark_price only updates when Delta's positions WS fires
+    // (infrequent). Use the per-second v2/ticker cache from deltaMonitor instead.
+    const deltaSymbol = this.latestDeltaPosition.product_symbol;
+    const freshDeltaMarkPrice = this.deltaMonitor.getMarkPrice(deltaSymbol);
+    if (freshDeltaMarkPrice && freshDeltaMarkPrice > 0) {
+      this.latestDeltaPosition = {
+        ...this.latestDeltaPosition,
+        mark_price: String(freshDeltaMarkPrice),
+      };
+    }
+
+    // latestCoindcxPosition.mark_price is whatever the last position WS event
+    // carried. Overwrite with the per-second Binance !markPrice@arr cache.
+    const coindcxSymbol =
+      this.latestCoindcxPosition.symbol || this.latestCoindcxPosition.pair;
+    const freshCoindcxMarkPrice =
+      this.coindcxMonitor.getMarkPrice(coindcxSymbol);
+    if (freshCoindcxMarkPrice && freshCoindcxMarkPrice > 0) {
+      this.latestCoindcxPosition = {
+        ...this.latestCoindcxPosition,
+        mark_price: freshCoindcxMarkPrice,
+      };
+    }
+    // ─────────────────────────────────────────────────────────────────────────────
+
     // 🔴 30% buffer rakhna hai liquidation se pehle
     // const bufferPercent = 30;
     const bufferPercent = this.bufferPercentForLiquidationProtection;

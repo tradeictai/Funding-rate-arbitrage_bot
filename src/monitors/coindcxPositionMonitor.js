@@ -18,6 +18,7 @@ class CoinDCXPositionMonitor extends EventEmitter {
     this.binanceSocket = null; // Public funding rate socket
     this.positions = new Map(); // symbol -> position data (CoinDCX format)
     this.fundingRates = new Map(); // symbol -> { rate%, nextFundingTime, timeRemaining }
+    this.markPrices = new Map(); // Live mark prices from Binance !markPrice@arr (updated every second)
 
     this.apiKey = config.orderPlace.coindcx.apiKey;
     this.apiSecret = config.orderPlace.coindcx.apiSecret;
@@ -336,7 +337,14 @@ class CoinDCXPositionMonitor extends EventEmitter {
           const binanceSymbol = update.s; // e.g., "SONICUSDT"
           const coindcxSymbol = this.binanceToCoinDCX(binanceSymbol); // Convert to "B-SONIC_USDT"
 
-          // Only care about symbols we have positions in
+          // Always cache mark price regardless of whether we hold a position
+          // (needed so liquidation check has fresh data the moment a position exists)
+          const tickerMarkPrice = parseFloat(update.p);
+          if (!isNaN(tickerMarkPrice) && tickerMarkPrice > 0) {
+            this.markPrices.set(coindcxSymbol, tickerMarkPrice);
+          }
+
+          // Only care about symbols we have positions in for funding rate
           if (!this.positions.has(coindcxSymbol)) return;
 
           const rate = parseFloat(update.r) * 100; // to percent
@@ -414,6 +422,16 @@ class CoinDCXPositionMonitor extends EventEmitter {
   // --- Public Getters ---
   getPositions() {
     return Array.from(this.positions.values());
+  }
+
+  /** Returns the latest live mark price for a CoinDCX symbol (e.g. 'B-SONIC_USDT') from Binance stream */
+  getMarkPrice(symbol) {
+    if (!symbol) return null;
+    return (
+      this.markPrices.get(symbol) ??
+      this.markPrices.get(symbol.toUpperCase()) ??
+      null
+    );
   }
 
   getPosition(symbol) {

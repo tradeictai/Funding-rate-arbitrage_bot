@@ -20,6 +20,7 @@ class DeltaPositionMonitor extends EventEmitter {
     this.positions = new Map();
     this.normalizedCache = new Map();
     this.fundingRates = new Map();
+    this.markPrices = new Map(); // Live mark prices from v2/ticker (updated every second)
 
     this.socketUrl = "wss://socket.india.delta.exchange";
     this.restBaseUrl = "https://api.india.delta.exchange";
@@ -401,7 +402,13 @@ class DeltaPositionMonitor extends EventEmitter {
       // Funding rate comes as decimal (e.g., 0.0001 = 0.01%)
       const rate = parseFloat(msg.funding_rate);
 
-      // Skip if funding rate is null/undefined/NaN
+      // Cache live mark price from ticker (available on every v2/ticker message)
+      const tickerMarkPrice = parseFloat(msg.mark_price);
+      if (!isNaN(tickerMarkPrice) && tickerMarkPrice > 0) {
+        this.markPrices.set(symbol, tickerMarkPrice);
+      }
+
+      // Skip funding rate processing if funding rate is null/undefined/NaN
       if (rate === null || rate === undefined || isNaN(rate)) {
         return;
       }
@@ -512,6 +519,17 @@ class DeltaPositionMonitor extends EventEmitter {
   getPositions() {
     return Array.from(this.normalizedCache.values());
   }
+
+  /** Returns the latest live mark price for a symbol from v2/ticker stream */
+  getMarkPrice(symbol) {
+    if (!symbol) return null;
+    return (
+      this.markPrices.get(symbol) ??
+      this.markPrices.get(symbol.toUpperCase()) ??
+      null
+    );
+  }
+
   getPositionBySymbol(symbol) {
     return this.getPositions().find((p) => p.product_symbol === symbol);
   }
