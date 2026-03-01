@@ -685,6 +685,64 @@ class ExitManager {
       // Exit Delta if position exists
       if (hasDeltaPosition) {
         deltaExit = await this.exitDeltaPosition(trade, trade.deltaPosition);
+
+        // If all retries failed, verify via REST whether Delta position is actually closed.
+        // Guards against duplicate-exit race condition: a second concurrent emergency exit
+        // gets HTTP 400 on reduce_only (position already gone), exhausts all retries, then
+        // would incorrectly place a fresh CoinDCX buy order — creating a naked long position.
+        if (!deltaExit.success && !deltaExit.skipped) {
+          console.log(
+            "   ⚠️ Delta exit failed all retries - checking actual position via REST...",
+          );
+          try {
+            const deltaPositions = await deltaAPI.getAllPositions();
+            const symbol = trade.details?.deltaPosition?.product_symbol;
+            const stillOpen = deltaPositions?.some(
+              (p) => p.product_symbol === symbol && Math.abs(p.size || 0) > 0,
+            );
+            if (!stillOpen) {
+              console.log(
+                "   ✅ Delta position already closed (REST confirmed) - treating as success",
+              );
+              deltaExit = {
+                success: true,
+                exchange: "delta",
+                skipped: true,
+                message: "Position already closed (confirmed via REST)",
+              };
+            } else {
+              console.error(
+                "   ❌ Delta position still open - aborting CoinDCX exit to avoid one-sided position",
+              );
+              return {
+                success: false,
+                type: "emergency_exit",
+                stage: "exit_orders",
+                deltaExit,
+                coindcxExit,
+                reason:
+                  "Delta exit failed with position still open - manual intervention required",
+              };
+            }
+          } catch (verifyError) {
+            console.error(
+              "   ❌ Could not verify Delta position:",
+              verifyError.message,
+            );
+            console.error(
+              "   ⚠️ Aborting CoinDCX exit for safety - manual check needed",
+            );
+            return {
+              success: false,
+              type: "emergency_exit",
+              stage: "exit_orders",
+              deltaExit,
+              coindcxExit,
+              reason:
+                "Delta verification failed - CoinDCX exit aborted for safety",
+            };
+          }
+        }
       } else {
         console.log("   ⏭️ Skipping Delta exit (no position)");
       }

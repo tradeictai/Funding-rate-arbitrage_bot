@@ -958,6 +958,15 @@ class TradeMonitor extends EventEmitter {
       console.log(`   📍 ACTION: EXIT to avoid liquidation & fees`);
       console.log("   " + "=".repeat(60));
 
+      // 🔒 SET FLAG IMMEDIATELY before any await — prevents race condition.
+      // Two concurrent callers (e.g. two simultaneous funding-rate events) can both
+      // pass the top-of-function exitInProgress guard before either yields, because
+      // JavaScript only interleaves at await points. By setting the flag here
+      // (no await above this point within the shouldExit block) the second caller
+      // will be blocked on the next event-loop tick when it checks at the top.
+      this.exitInProgress = true;
+      console.log("🔒 Exit lock acquired - preventing duplicate triggers");
+
       // DOUBLE VERIFICATION before exit (same as one-sided exit)
       console.log("\n🔄 DOUBLE VERIFICATION BEFORE LIQUIDATION EXIT...");
       console.log("─".repeat(60));
@@ -973,13 +982,10 @@ class TradeMonitor extends EventEmitter {
 
       if (!deltaConfirmed && !coindcxConfirmed) {
         console.log("✅ Both positions already closed - no exit needed");
+        this.exitInProgress = false; // Reset so future liquidation checks run normally
         this.resetFundingState();
         return true;
       }
-
-      // 🔒 SET FLAG TO PREVENT MULTIPLE TRIGGERS
-      this.exitInProgress = true;
-      console.log("🔒 Exit lock acquired - preventing duplicate triggers");
 
       this.emergencyExit("emergencyExit", {
         reason: "LIQUIDATION_PROTECTION",
