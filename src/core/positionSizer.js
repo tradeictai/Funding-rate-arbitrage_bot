@@ -303,41 +303,41 @@ class PositionSizer {
     console.log(`Price Spread: ${priceSpread.toFixed(4)}%`);
 
     // ENTRY RULE: Short price must be > Long price AND spread >= 0.15%
-    const MIN_ENTRY_SPREAD = 0; // 0.15%
+    const MIN_ENTRY_SPREAD = 0.01; // 0.15%
 
-    // if (shortPrice <= longPrice) {
-    //   console.log(`❌ ENTRY REJECTED: Short price ($${shortPrice.toFixed(8)}) <= Long price ($${longPrice.toFixed(8)})`);
-    //   console.log('━'.repeat(60));
-    //   return {
-    //     canTrade: false,
-    //     reason: `Invalid spread: SHORT price must be > LONG price (SHORT=${shortPrice.toFixed(8)}, LONG=${longPrice.toFixed(8)})`,
-    //     priceSpread,
-    //     shortExchange,
-    //     longExchange,
-    //     shortPrice,
-    //     longPrice,
-    //     balances,
-    //     // 🎯 Include TP for MongoDB storage (even though trade rejected)
-    //     tp: tpValues
-    //   };
-    // }
+    if (shortPrice <= longPrice) {
+      console.log(`❌ ENTRY REJECTED: Short price ($${shortPrice.toFixed(8)}) <= Long price ($${longPrice.toFixed(8)})`);
+      console.log('━'.repeat(60));
+      return {
+        canTrade: false,
+        reason: `Invalid spread: SHORT price must be > LONG price (SHORT=${shortPrice.toFixed(8)}, LONG=${longPrice.toFixed(8)})`,
+        priceSpread,
+        shortExchange,
+        longExchange,
+        shortPrice,
+        longPrice,
+        balances,
+        // 🎯 Include TP for MongoDB storage (even though trade rejected)
+        tp: tpValues
+      };
+    }
 
-    // if (priceSpread < MIN_ENTRY_SPREAD) {
-    //   console.log(`❌ ENTRY REJECTED: Spread ${priceSpread.toFixed(4)}% < ${MIN_ENTRY_SPREAD}% (minimum required)`);
-    //   console.log('━'.repeat(60));
-    //   return {
-    //     canTrade: false,
-    //     reason: `Spread too low: ${priceSpread.toFixed(4)}% < ${MIN_ENTRY_SPREAD}% minimum`,
-    //     priceSpread,
-    //     shortExchange,
-    //     longExchange,
-    //     shortPrice,
-    //     longPrice,
-    //     balances,
-    //     // 🎯 Include TP for MongoDB storage (even though trade rejected)
-    //     tp: tpValues
-    //   };
-    // }
+    if (priceSpread < MIN_ENTRY_SPREAD) {
+      console.log(`❌ ENTRY REJECTED: Spread ${priceSpread.toFixed(4)}% < ${MIN_ENTRY_SPREAD}% (minimum required)`);
+      console.log('━'.repeat(60));
+      return {
+        canTrade: false,
+        reason: `Spread too low: ${priceSpread.toFixed(4)}% < ${MIN_ENTRY_SPREAD}% minimum`,
+        priceSpread,
+        shortExchange,
+        longExchange,
+        shortPrice,
+        longPrice,
+        balances,
+        // 🎯 Include TP for MongoDB storage (even though trade rejected)
+        tp: tpValues
+      };
+    }
 
     console.log(`✅ SPREAD CHECK PASSED: ${priceSpread.toFixed(4)}% >= ${MIN_ENTRY_SPREAD}%`);
     console.log(`   SHORT (${shortExchange}) = $${shortPrice.toFixed(8)}`);
