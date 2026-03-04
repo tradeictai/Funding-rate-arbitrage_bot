@@ -542,7 +542,24 @@ class ArbitrageEngine extends EventEmitter {
       `   Priority Score: ${bestOpportunity.priorityScore.toFixed(0)}`,
     );
 
-    await this.handleOpportunity(bestOpportunity);
+    // Try opportunities in priority order — if Phase 2 (spread check) rejects
+    // the best one, immediately fall through to the next qualified opportunity.
+    for (let i = 0; i < qualifiedOpportunities.length; i++) {
+      const opp = qualifiedOpportunities[i];
+      if (i > 0) {
+        console.log(
+          `\n↩️  Phase 2 rejected #${i} (${qualifiedOpportunities[i - 1].token}) → trying opportunity #${i + 1}: ${opp.token}` +
+            ` (Funding Diff: ${opp.fundingDiff.toFixed(4)}%, Priority: ${opp.priorityScore.toFixed(0)})`,
+        );
+      }
+      const result = await this.handleOpportunity(opp);
+      if (result !== "phase2_rejected") break;
+      if (i + 1 === qualifiedOpportunities.length) {
+        console.log(
+          `\n⛔ All ${qualifiedOpportunities.length} qualified opportunities rejected by Phase 2. Waiting for next scan.`,
+        );
+      }
+    }
   }
 
   /**
@@ -873,7 +890,7 @@ class ArbitrageEngine extends EventEmitter {
         // Release execution lock
         this.isExecuting = false;
         console.log("🔓 Execution lock released (Phase 2 rejection)");
-        return;
+        return "phase2_rejected";
       }
 
       // Add Phase 2 data to opportunity
