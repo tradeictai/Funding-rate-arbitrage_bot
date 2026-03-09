@@ -80,7 +80,7 @@ function getDefaultTradingConfig() {
     orderbookDepth: parseInt(process.env.ORDERBOOK_DEPTH) || 20,
     minNetProfitPct: parseFloat(process.env.MIN_NET_PROFIT_PCT) || 0.05,
     flipExitThresholdPct:
-      parseFloat(process.env.FLIP_EXIT_THRESHOLD_PCT) || 0.05,
+      parseFloat(process.env.FLIP_EXIT_THRESHOLD_PCT) || 0.02,
     paperTradingMode: process.env.PAPER_TRADING_MODE === "true" || false,
     orderCooldownMinutes: parseInt(process.env.ORDER_COOLDOWN_MINUTES) || 5,
     quantityTolerance: parseFloat(process.env.QUANTITY_TOLERANCE) || 0,
