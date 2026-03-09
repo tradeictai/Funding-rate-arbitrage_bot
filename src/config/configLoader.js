@@ -61,7 +61,7 @@ function getDefaultTradingConfig() {
     primaryThreshold: parseFloat(process.env.PRIMARY_THRESHOLD) || 0.1,
     secondaryThreshold: parseFloat(process.env.SECONDARY_THRESHOLD) || 0.1,
     fundingTimeWindowSeconds:
-      parseInt(process.env.FUNDING_TIME_WINDOW_SECONDS) || 60,
+      parseInt(process.env.FUNDING_TIME_WINDOW_SECONDS) || 30,
     bufferPercentForLiquidationProtection:
       parseFloat(process.env.BUFFER_PERCENT_FOR_LIQUIDATION_PROTECTION) || 30,
     minFillPct: parseFloat(process.env.MIN_FILL_PCT) || 0.95,
