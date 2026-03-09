@@ -43,7 +43,7 @@ class TradeMonitor extends EventEmitter {
 
     this.leverage = config.trading.leverage;
 
-    this.flipExitThresholdPct = config.trading.flipExitThresholdPct || 0.05;
+    this.flipExitThresholdPct = config.trading.flipExitThresholdPct || 0.02;
 
     this.positionCheckInterval = null;
     this.positionVerifyInterval = null;
