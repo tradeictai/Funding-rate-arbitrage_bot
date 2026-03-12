@@ -1926,8 +1926,19 @@ class TradeMonitor extends EventEmitter {
       }
     } catch (error) {
       console.error(`   Delta REST: ❌ Error - ${error.message}`);
-      // If error contains rate limit, skip mismatch detection
-      if (error.message && error.message.includes("429")) {
+      // Skip mismatch detection for any API auth/availability error (429, 401, 400, IP whitelist)
+      const isDeltaApiUnavailable =
+        error.message &&
+        (error.message.includes("429") ||
+          error.message.includes("401") ||
+          error.message.includes("400") ||
+          error.message.toLowerCase().includes("unauthorized") ||
+          error.message.toLowerCase().includes("ip address not whitelisted") ||
+          error.message.toLowerCase().includes("forbidden"));
+      if (isDeltaApiUnavailable) {
+        console.error(
+          "   → API unavailable - preserving WS state, skipping mismatch check",
+        );
         restHasDelta = "SKIPPED_RATE_LIMIT";
       }
     }
@@ -2011,7 +2022,7 @@ class TradeMonitor extends EventEmitter {
     console.log(`   └─────────────┴──────────┴──────────┘`);
 
     // MISMATCH DETECTION WITH COUNTERS (to clear stale WS state)
-    const REST_MISMATCH_THRESHOLD = 1; // immediate clearing on first REST/WS disagreement
+    const REST_MISMATCH_THRESHOLD = 3; // require 3 consecutive REST/WS disagreements before clearing WS state
 
     // 🔴 SKIP MISMATCH DETECTION if Delta API is rate-limited
     if (restHasDelta === "SKIPPED_RATE_LIMIT") {

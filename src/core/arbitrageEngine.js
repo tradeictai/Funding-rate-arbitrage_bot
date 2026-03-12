@@ -7,6 +7,9 @@ import mongoService from "../services/mongoService.js";
 import config from "../config/config.js";
 import tpTrackerService from "../services/tpTrackerService.js";
 
+// Phase 1 supplementary imports
+import { checkFundingHistory24h } from "../services/fundingHistoryService.js";
+
 // Phase 2 imports
 import positionSizer from "./positionSizer.js";
 import liquidityAnalyzer from "./liquidityAnalyzer.js";
@@ -54,6 +57,8 @@ class ArbitrageEngine extends EventEmitter {
     this.paperTradingMode = config.trading.paperTradingMode;
     this.phase2Enabled = config.trading.phase2Enabled || true;
     this.phase3Enabled = config.trading.phase3Enabled || true;
+    this.fundingHistoryCheckEnabled =
+      config.trading.fundingHistoryCheckEnabled || false;
 
     this.opportunities = new Map();
 
@@ -509,6 +514,53 @@ class ArbitrageEngine extends EventEmitter {
     }
 
     console.log("Pass Coindcx");
+
+    // ── Phase 1 Step 2: Funding History Filter ──────────────────────────────
+    // For each opportunity that passed the threshold check, verify the diff
+    // was also consistently >= threshold across the last 24h of real history.
+    // Uses actual timestamps from Delta candles + Binance settled periods —
+    // no fixed-interval assumptions. Results are cached for 60 min per symbol.
+    if (this.fundingHistoryCheckEnabled && qualifiedOpportunities.length > 0) {
+      console.log(
+        `\n📊 Funding History Filter: checking last 24h for ${qualifiedOpportunities.length} candidate(s)...`,
+      );
+
+      const historyChecks = await Promise.all(
+        qualifiedOpportunities.map((opp) =>
+          checkFundingHistory24h(opp.token, opp.binanceSymbol, opp.threshold)
+            .then((result) => ({ opp, result }))
+            .catch((err) => ({
+              opp,
+              result: {
+                pass: true,
+                reason: `history check error (${err.message}) — skipped`,
+                skipped: true,
+              },
+            })),
+        ),
+      );
+
+      const beforeCount = qualifiedOpportunities.length;
+      qualifiedOpportunities.splice(0); // clear in-place
+
+      for (const { opp, result } of historyChecks) {
+        if (result.pass) {
+          qualifiedOpportunities.push(opp);
+          if (!result.skipped) {
+            console.log(`   ✅ ${opp.token}: ${result.reason}`);
+          } else {
+            console.log(`   ⏭️  ${opp.token}: ${result.reason}`);
+          }
+        } else {
+          console.log(`   ❌ ${opp.token}: FILTERED OUT — ${result.reason}`);
+        }
+      }
+
+      console.log(
+        `   📊 History filter result: ${qualifiedOpportunities.length}/${beforeCount} candidates passed`,
+      );
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     if (qualifiedOpportunities.length === 0) {
       console.log(

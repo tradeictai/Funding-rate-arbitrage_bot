@@ -70,7 +70,7 @@ function getDefaultTradingConfig() {
     maxWaitForFundingSeconds:
       parseInt(process.env.MAX_WAIT_FOR_FUNDING_SECONDS) || 300,
     preFundingWindowMinutes:
-      parseInt(process.env.PRE_FUNDING_WINDOW_MINUTES) || 30,
+      parseInt(process.env.PRE_FUNDING_WINDOW_MINUTES) || 240,
     maxQueuedOpps: parseInt(process.env.MAX_QUEUED_OPPS) || 15,
     maxPositionSizeUSD: parseFloat(process.env.MAX_POSITION_SIZE_USD) || 1000,
     minPositionSizeUSD: parseFloat(process.env.MIN_POSITION_SIZE_USD) || 0.5,
@@ -84,6 +84,8 @@ function getDefaultTradingConfig() {
     paperTradingMode: process.env.PAPER_TRADING_MODE === "true" || false,
     orderCooldownMinutes: parseInt(process.env.ORDER_COOLDOWN_MINUTES) || 5,
     quantityTolerance: parseFloat(process.env.QUANTITY_TOLERANCE) || 0,
+    fundingHistoryCheckEnabled:
+      process.env.FUNDING_HISTORY_CHECK_ENABLED === "true" || false,
   };
 }
 
@@ -158,7 +160,7 @@ export async function loadConfigFromDB() {
       // DB values with .env fallback
       leverage: dbConfig.leverage ?? parseInt(process.env.LEVERAGE) ?? 10,
       useFundPct:
-        dbConfig.useFundPct ?? parseFloat(process.env.USE_FUND_PCT) ?? 0.15,
+        parseFloat(process.env.USE_FUND_PCT) || dbConfig.useFundPct || 0.15,
       primaryThreshold:
         dbConfig.primaryThreshold ??
         parseFloat(process.env.PRIMARY_THRESHOLD) ??
@@ -201,6 +203,11 @@ export async function loadConfigFromDB() {
         dbConfig.flipExitThresholdPct ??
         parseFloat(process.env.FLIP_EXIT_THRESHOLD_PCT) ??
         0.05,
+
+      fundingHistoryCheckEnabled:
+        dbConfig.fundingHistoryCheckEnabled ??
+        process.env.FUNDING_HISTORY_CHECK_ENABLED === "true" ??
+        false,
 
       // .env only fields
       fundingTimeWindowSeconds:

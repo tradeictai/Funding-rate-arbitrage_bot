@@ -313,14 +313,24 @@ class DeltaAPI {
     } catch (error) {
       console.error("Delta API getAllPositions error:", error.message);
 
-      // 🔴 CRITICAL: Check if error is rate limit (429)
-      if (error.message && error.message.includes("429")) {
-        console.error("⚠️ RATE LIMITED - Cannot verify positions via REST");
+      // 🔴 CRITICAL: Check if error is API unavailable (429 rate limit, 401 unauth, 400 IP not whitelisted)
+      const isApiUnavailable =
+        error.message &&
+        (error.message.includes("429") ||
+          error.message.includes("401") ||
+          error.message.includes("400") ||
+          error.message.toLowerCase().includes("unauthorized") ||
+          error.message.toLowerCase().includes("ip address not whitelisted") ||
+          error.message.toLowerCase().includes("forbidden"));
+
+      if (isApiUnavailable) {
+        console.error("⚠️ API UNAVAILABLE - Cannot verify positions via REST");
+        console.error(`   → Reason: ${error.message}`);
         console.error("   → Returning null to preserve existing WS data");
         console.error(
           "   → Do NOT clear position based on this failed API call",
         );
-        return null; // null = API unavailable, [] = no positions
+        return null; // null = API unavailable, [] = confirmed no positions
       }
 
       // Fallback: try /v2/positions without product_id (some Delta versions support this)
@@ -337,9 +347,20 @@ class DeltaAPI {
       } catch (fallbackError) {
         console.error("Delta API fallback also failed:", fallbackError.message);
 
-        // Check fallback for rate limit too
-        if (fallbackError.message && fallbackError.message.includes("429")) {
-          console.error("⚠️ RATE LIMITED on fallback too");
+        // Check fallback for unavailable API errors too
+        const isFallbackUnavailable =
+          fallbackError.message &&
+          (fallbackError.message.includes("429") ||
+            fallbackError.message.includes("401") ||
+            fallbackError.message.includes("400") ||
+            fallbackError.message.toLowerCase().includes("unauthorized") ||
+            fallbackError.message
+              .toLowerCase()
+              .includes("ip address not whitelisted") ||
+            fallbackError.message.toLowerCase().includes("forbidden"));
+
+        if (isFallbackUnavailable) {
+          console.error("⚠️ API UNAVAILABLE on fallback too");
           return null;
         }
       }
