@@ -115,7 +115,7 @@ class SymbolMapper {
       ["INITUSD", "INITUSDT"],
       ["PROVEUSD", "PROVEUSDT"],
       ["MOVEUSD", "MOVEUSDT"],
-      ["VINEUSD", "VINEUSDT"],
+      // ["VINEUSD", "VINEUSDT"],
       ["SKLUSD", "SKLUSDT"],
       ["BCHUSD", "BCHUSDT"],
       ["LISTAUSD", "LISTAUSDT"],

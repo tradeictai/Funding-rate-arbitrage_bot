@@ -22,7 +22,7 @@ class BinanceExchange extends EventEmitter {
    */
   connect() {
     // Public stream for ALL perpetual contracts mark price + funding rate (updates every 1 second)
-    const streamUrl = 'wss://fstream.binance.com/stream?streams=!markPrice@arr';
+    const streamUrl = 'wss://fstream.binance.com/market/stream?streams=!markPrice@arr';
 
     this.ws = new WebSocket(streamUrl);
 
